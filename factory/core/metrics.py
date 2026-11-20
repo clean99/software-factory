@@ -16,7 +16,7 @@ from collections import Counter, defaultdict
 from factory.core import leaks, privacy, verdicts
 from factory.util import CONFIG, ROOT, CommandError, load_config, public_destinations, write_json
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 UTC = dt.timezone.utc
 PR_URL = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/pull/[1-9]\d*/?", re.ASCII)
 OPEN = {"open", "submitted", "in-review", "community-review", "changes-requested", "ci-failing",
@@ -168,7 +168,7 @@ def item_paths(runs):
                 yield path
 
 
-def read_snapshot(root, config, suite_report=None):
+def read_snapshot(root, config, suite_report=None, history_cache=None):
     root = pathlib.Path(root)
     reader = Reader()
 
@@ -205,8 +205,9 @@ def read_snapshot(root, config, suite_report=None):
     events = reader.jsonl(ledger.with_name("followup-events.jsonl"))
     owner_ops = reader.jsonl(ledger.with_name("owner-ops.jsonl"))
     suite = reader.json(pathlib.Path(suite_report)) if suite_report else None
+    pr_history = reader.json(pathlib.Path(history_cache) if history_cache else ledger.with_name("pr-history.json"))
     return {"prs": prs, "items": items, "shifts": shifts, "events": events, "owner_ops": owner_ops,
-            "owner_action_rows": owner_rows, "suite": suite, "history": history(root),
+            "pr_history": pr_history, "owner_action_rows": owner_rows, "suite": suite, "history": history(root),
             "input_quality": dict(reader.issues)}
 
 
@@ -290,11 +291,45 @@ def compute(snapshot, config, generated_at=None):
           note="Coverage counts concluded PRs against all classified PRs; open PRs are not failures.")
     ratio("closed_unmerged_share", "Closed without merge", "Acceptance", len(concluded) - len(merged), len(concluded), len(known),
           "Closed without merge / (merged + closed without merge).", ledger)
-    metric("first_round_approval_share", "First-round approval", "First-round quality", None, "percent",
-           "Reviewed PRs approved or merged with no changes requested and no fix pushed after submission / reviewed PRs.",
-           "PR outcomes; follow-up review events; item push metadata", 0, len(prs),
-           reason="Complete upstream review and post-submission push histories are not retained. A merge, an approval snapshot or missing fix events cannot establish a clean first round.",
-           note="Coverage uses all submitted PRs: the eligible reviewed cohort cannot be established from partial events. Pre-publication independent reviews are not upstream approval.")
+    from factory.core.metrics_history import observations
+    upstream = observations(prs, snapshot.get("pr_history"))
+    reviewed_history = [r for r in upstream.values() if r["reviewed"]]
+    clean = sum(r["clean"] for r in reviewed_history)
+    source = "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache"
+    history_note = ("Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. "
+                    "Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; "
+                    "force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push.")
+
+    def upstream_metric(key, label, group, value, unit, definition):
+        metric(key, label, group, value, unit, definition, source, len(upstream), len(prs), note=history_note,
+               reason="No complete cached histories or eligible observations. Run factory metrics history to backfill." if value is None else None)
+        if value is not None:
+            metrics[key]["status"] = "tracked" if len(upstream) >= .9 * len(prs) else "partial"
+
+    upstream_metric("first_round_approval_share", "First-round approval", "First-round quality",
+                    clean / len(reviewed_history) if reviewed_history else None, "percent",
+                    "Approved or merged with no non-self change request, no self non-merge commit/force-push after submission, "
+                    "and (if merged) no non-self corrective update before merge / reviewed PRs. "
+                    "Reviewed means merged or at least one non-self APPROVED, CHANGES_REQUESTED or COMMENTED review; self reviews do not count.")
+    metrics["first_round_approval_share"].update(numerator=clean, denominator=len(reviewed_history),
+                                                excluded_histories=len(prs) - len(upstream),
+                                                unreviewed=len(upstream) - len(reviewed_history))
+    for key, label, field in (("fixes_pushed_after_review", "PRs with fixes pushed after review", "after_review_pushes"),
+                              ("fixes_pushed_before_review", "Pre-review self-corrections (defect signal)", "before_review_pushes")):
+        upstream_metric(key, label, "Defects", sum(r[field] > 0 for r in upstream.values()) if upstream else None, "count",
+                        "PRs with a self non-merge commit or force-push after submission "
+                        + ("and after the first non-self review." if field == "after_review_pushes" else "before any non-self review, including PRs not yet reviewed.")
+                        + " Total updates counts distinct commits and force-push events, not network push batches or proven code defects.")
+        metrics[key]["total_pushes"] = sum(r[field] for r in upstream.values()) if upstream else None
+    fix_hours = [hours for r in upstream.values() for hours in r["fix_hours"]]
+    upstream_metric("review_fix_hours", "Review request to pushed fix", "Factory speed",
+                    statistics.median(fix_hours) if fix_hours else None, "hours",
+                    "Median hours from each non-self CHANGES_REQUESTED review to the next self non-merge commit or force-push. "
+                    "Comment-only reviews are too ambiguous to establish a fix request; requests without a subsequent fix are excluded.")
+    metrics["review_fix_hours"].update(samples=len(fix_hours), requests=sum(r["changes_requested"] for r in upstream.values()))
+    upstream_metric("review_rounds_per_pr", "Upstream review rounds per PR", "First-round quality",
+                    statistics.mean(r["rounds"] for r in reviewed_history) if reviewed_history else None, "rounds",
+                    "Mean non-self CHANGES_REQUESTED review count + 1 over reviewed PRs. Distinct from pre-publication independent review.")
     by_item = {row["key"]: row for row in items}
     by_pr = {pr_url(row["meta"].get("pr_url")): row for row in items if pr_url(row["meta"].get("pr_url"))}
 
@@ -318,16 +353,7 @@ def compute(snapshot, config, generated_at=None):
            "Median hours from the persisted candidate item's creation to PR submission; scouting before item creation is not recorded. Date-only, naive and reversed timestamps are excluded.",
            "Item metadata: created_at; PR ledger: submitted_at", len(lead), len(prs),
            reason="No nonnegative pair of timezone-aware timestamps." if not lead else None)
-    metric("review_fix_hours", "Review request to pushed fix", "Factory speed", None, "hours",
-           "Median hours from an upstream reviewer's change request to the factory's corresponding corrective push.",
-           "Follow-up review events; item push metadata; command receipts", 0, len(prs),
-           reason="Review events retain observation times, not structured original request times. Latest push metadata is overwritten and does not link a corrective push to a request.",
-           note="Coverage uses submitted PRs; no complete request-to-fix pairs are recorded.")
     reviewed_prs = [item for _, item in paired_items if item and item.get("reviews")]
-    metric("fixes_pushed_after_review", "Fixes pushed after review", "Defects", None, "count",
-           "Corrective pushes after upstream review, linked to the submitted PR and the review request; unrelated pushes are excluded.",
-           "Follow-up review events; item push metadata; command receipts", 0, len(prs),
-           reason="There is no retained corrective-push history linked to upstream review requests. A changed head may be a rebase or unrelated work, not a review fix.")
     metric("candidate_selection_misses", "Candidate-selection misses", "Defects", None, "count",
            "PRs closed without merge because they were duplicate, already fixed or unwanted; each PR counts once.",
            "PR ledger: closed outcomes; follow-up closure events", 0, len(concluded) - len(merged),
@@ -356,7 +382,7 @@ def compute(snapshot, config, generated_at=None):
                "Follow-up events; PR ledger", 0, len(merged),
                reason="Follow-up stops observing merged PRs; no post-merge incident registry exists. Red/green test reverts are not production reverts.")
     rounds = [len(item["reviews"]) for item in reviewed_prs]
-    metric("review_rounds_per_pr", "Recorded independent review rounds per PR", "First-round quality", statistics.mean(rounds) if rounds else None, "rounds",
+    metric("independent_review_rounds_per_pr", "Pre-publication independent review rounds per PR", "First-round quality", statistics.mean(rounds) if rounds else None, "rounds",
            "Mean preserved independent review verdicts per PR with review records; current and numbered archives are deduplicated by head and verdict.",
            "Item review files and numbered review archives", len(rounds), len(prs), partial=True,
            reason="No readable independent review verdicts." if not rounds else None,
@@ -419,7 +445,7 @@ def compute(snapshot, config, generated_at=None):
            "Local git history", history_data["commits"] if history_data else 0, history_data["commits"] if history_data else 0,
            reason="Git history could not be read." if history_data is None else None,
            note="Only explicitly labeled repair commits; differently worded repairs are excluded.")
-    weekly = weekly_series(prs, lead)
+    weekly = weekly_series(prs, lead, upstream)
     return {"schema_version": SCHEMA_VERSION, "generated_at": (generated_at or dt.datetime.now(UTC)).astimezone(UTC).isoformat(timespec="seconds"),
             "links": public_links(config), "metrics": metrics, "weekly": weekly,
             "input_quality": {**snapshot.get("input_quality", {}), "invalid_pr_rows": invalid, "duplicate_pr_rows": duplicates},
@@ -434,11 +460,24 @@ def compute(snapshot, config, generated_at=None):
                             "Zero event counts mean no events in retained records for that week. Input read errors and omitted dates can undercount."]}
 
 
-def weekly_series(prs, lead):
+def weekly_series(prs, lead, upstream=None):
+    upstream = upstream or {}
     buckets = defaultdict(lambda: {"opened": 0, "merged": 0, "open_submission_cohort": 0,
-                                   "cohort_merged": 0, "cohort_concluded": 0, "lead_hours": []})
+                                   "cohort_merged": 0, "cohort_concluded": 0, "lead_hours": [], "fix_hours": [],
+                                   "first_round_numerator": 0, "first_round_denominator": 0,
+                                   "history_covered": 0, "history_total": 0})
     submitted_coverage = merged_coverage = 0
     for row in prs:
+        evidence = upstream.get(row["url"])
+        history_week = week(evidence["created_at"] if evidence else row.get("submitted_at"))
+        if history_week:
+            bucket = buckets[history_week]
+            bucket["history_total"] += 1
+            if evidence:
+                bucket["history_covered"] += 1
+                bucket["first_round_numerator"] += evidence["clean"]
+                bucket["first_round_denominator"] += evidence["reviewed"]
+                bucket["fix_hours"].extend(evidence["fix_hours"])
         submitted_week = week(row.get("submitted_at"))
         if submitted_week:
             submitted_coverage += 1
@@ -459,13 +498,18 @@ def weekly_series(prs, lead):
             key = current.isoformat()
             bucket = buckets[key]
             lead_values = bucket.pop("lead_hours")
+            fix_values = bucket.pop("fix_hours")
+            reviewed = bucket["first_round_denominator"]
             concluded = bucket["cohort_concluded"]
             rows.append({"week": key, **bucket,
                          "merge_rate": bucket["cohort_merged"] / concluded if concluded else None,
                          "closed_unmerged_share": (concluded - bucket["cohort_merged"]) / concluded if concluded else None,
                          "median_lead_hours": round(statistics.median(lead_values), 3) if lead_values else None,
-                         "lead_time_samples": len(lead_values), "review_fix_hours": None,
-                         "first_round_approval_share": None, "owner_interventions": None})
+                         "lead_time_samples": len(lead_values),
+                         "review_fix_hours": round(statistics.median(fix_values), 3) if fix_values else None,
+                         "review_fix_samples": len(fix_values),
+                         "first_round_approval_share": bucket["first_round_numerator"] / reviewed if reviewed else None,
+                         "owner_interventions": None})
             current += dt.timedelta(days=7)
     return {"rows": rows, "coverage": {"submission_dates": {"covered": submitted_coverage, "total": len(prs)},
                                           "merge_dates": {"covered": merged_coverage, "total": sum(r["outcome"] == "merged" for r in prs)}}}
@@ -496,7 +540,7 @@ def command(args):
     root = pathlib.Path(args.records_root).resolve() if args.records_root else ROOT
     try:
         config = load_config(root)
-        snapshot = read_snapshot(root, config, args.suite_report)
+        snapshot = read_snapshot(root, config, args.suite_report, args.history_cache)
         # Public surface configuration belongs to the running factory, not the historical records being read.
         result = compute(snapshot, CONFIG)
         text = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
@@ -535,6 +579,9 @@ def register(sub):
     parser = sub.add_parser("metrics", help="read saved evidence and export privacy-scanned portfolio metrics (no network)")
     parser.add_argument("--output", "-o", default="metrics/metrics.json", help="JSON output path (default: metrics/metrics.json)")
     parser.add_argument("--records-root", help="read another factory checkout and its configured records without updating them")
+    parser.add_argument("--history-cache", help="read a separate PR history cache offline (default: beside the PR ledger)")
     parser.add_argument("--site", help="also write a self-contained static index.html to this directory")
     parser.add_argument("--suite-report", help="full-suite JSON produced by tests/run_suite.py --json; no tests are run by metrics")
     parser.set_defaults(fn=command)
+    from factory.core.metrics_history import register as register_history
+    register_history(parser)

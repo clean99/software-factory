@@ -114,7 +114,7 @@ def chart(rows, title, series, unit, *, bars=False):
     if len(series) > 1:
         legend = '<div class="legend">' + ''.join(f'<span><i class="swatch series-{s + 1}"></i>{escape(label)}</span>' for s, (_, label) in enumerate(series)) + '</div>'
     else:
-        unit_label = {"hours": "Hours", "percent": "Percent of concluded PRs"}.get(unit, unit)
+        unit_label = {"hours": "Hours", "percent": series[0][1] + " (%)"}.get(unit, unit)
         legend = f'<div class="chart-unit">{escape(unit_label)}</div>'
     tab = table(["Week (UTC)"] + [label for _, label in series], [[escape(r["week"])] + [escape(value_text(r[key], unit)) for key, _ in series] for r in rows])
     return legend + ''.join(parts) + '<div class="tooltip" hidden></div><details><summary>View weekly values</summary>' + tab + '</details>'
@@ -128,9 +128,11 @@ def render(data):
         coverage = row["coverage"]
         reason = f'<small>{escape(row["reason"])}</small>' if row.get("reason") else ''
         state = ' class="untracked"' if row["value"] is None else ''
+        cohort = (f'<small>{row["numerator"]}/{row["denominator"]} reviewed PRs clean</small>'
+                  if key == "first_round_approval_share" and row.get("denominator") is not None else '')
         highlights.append(f'<div class="stat"><span class="stat-label">{escape(row["label"])}</span>'
-                          f'<strong{state}>{escape(value_text(row["value"], row["unit"]))}</strong>'
-                          f'<small>{coverage["covered"]}/{coverage["total"]} records with evidence</small>{reason}</div>')
+                          f'<strong{state}>{escape(value_text(row["value"], row["unit"]))}</strong>{cohort}'
+                          f'<small>{coverage["covered"]}/{coverage["total"]} records with evidence · {row["status"].replace("_", " ")}</small>{reason}</div>')
     sections = []
     for group in GROUPS:
         rows = []
@@ -139,6 +141,10 @@ def render(data):
                 continue
             coverage = row["coverage"]
             detail = escape(row["definition"])
+            if row.get("total_pushes") is not None:
+                detail += f'<p class="detail-note">{row["total_pushes"]} commit/force-push updates in total.</p>'
+            if "samples" in row:
+                detail += f'<p class="detail-note">{row["samples"]}/{row["requests"]} change requests have a subsequent fix.</p>'
             for field in ("reason", "note"):
                 if row.get(field):
                     detail += '<p class="detail-note">' + escape(row[field]) + '</p>'
@@ -151,15 +157,16 @@ def render(data):
     charts = []
     for title, series, unit, bars, note in (
         ("Weekly output", [("opened", "Opened"), ("merged", "Merged")], "count", True, "PRs by submission date and merge date. These are separate event cohorts."),
-        ("Cohort acceptance", [("merge_rate", "Merge rate")], "percent", False, "Merged / concluded, grouped by submission week. Open PRs are excluded; recent cohorts are unfinished."),
+        ("First-round quality", [("first_round_approval_share", "Clean first round")], "percent", False, "Clean approved or merged PRs / reviewed PRs, by submission week. Incomplete histories are excluded; recent cohorts are unfinished."),
         ("Candidate-to-PR lead time", [("median_lead_hours", "Median hours")], "hours", False, "Median hours from candidate creation to submission, by submission week. Missing timestamp pairs leave gaps, not zeroes."),
     ):
         charts.append(f'<section class="chart"><h3>{escape(title)}</h3><p class="chart-note">{escape(note)}</p>' + chart(rows, title, series, unit, bars=bars) + '</section>')
     coverage = data["weekly"]["coverage"]
-    weekly_table = table(["Week (UTC)", "Opened", "Merged", "Currently open¹", "Concluded cohort²", "Cohort merge rate", "Closed share", "First-round approval", "Median lead", "Lead samples", "Request to fix", "Owner interventions"],
+    weekly_table = table(["Week (UTC)", "Opened", "Merged", "Currently open¹", "Concluded cohort²", "Cohort merge rate", "Closed share", "First-round approval", "Clean / reviewed", "History coverage", "Median lead", "Lead samples", "Request to fix", "Owner interventions"],
                          [[escape(r["week"]), str(r["opened"]), str(r["merged"]), str(r["open_submission_cohort"]), str(r["cohort_concluded"]),
                            escape(value_text(r["merge_rate"], "percent")), escape(value_text(r["closed_unmerged_share"], "percent")),
                            escape(value_text(r["first_round_approval_share"], "percent")),
+                           f'{r["first_round_numerator"]}/{r["first_round_denominator"]}', f'{r["history_covered"]}/{r["history_total"]}',
                            escape(value_text(r["median_lead_hours"], "hours")), str(r["lead_time_samples"]),
                            escape(value_text(r["review_fix_hours"], "hours")), escape(value_text(r["owner_interventions"], "count"))] for r in rows])
     template = pathlib.Path(__file__).with_name("metrics.html").read_text(encoding="utf-8")

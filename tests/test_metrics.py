@@ -58,7 +58,7 @@ class MetricsTests(unittest.TestCase):
         expected = {
             "prs_opened": 4, "prs_merged": 2, "prs_open": 1, "merge_rate": .667,
             "closed_unmerged_share": .333, "median_lead_hours": 24,
-            "ci_failures_after_submission": 1, "review_rounds_per_pr": 1.333,
+            "ci_failures_after_submission": 1, "independent_review_rounds_per_pr": 1.333,
             "candidates_found": 4, "dropped_qualify": 1, "dropped_value": 1, "sent_back_review": 1,
             "coordinator_minutes": 15, "coordinator_tool_calls": 30, "shift_completion_rate": .667,
             "factory_test_count": 4, "factory_test_runtime": 2.5, "factory_fix_commits": 3,
@@ -67,6 +67,7 @@ class MetricsTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(rows[key]["value"], value)
         untracked = {"first_round_approval_share", "review_fix_hours", "fixes_pushed_after_review", "candidate_selection_misses",
+                     "review_rounds_per_pr", "fixes_pushed_before_review",
                      "post_merge_reverts", "post_merge_regressions", "agent_minutes_per_pr", "tool_calls_per_pr",
                      "agent_minutes_per_merge", "tool_calls_per_merge", "unattended_shifts", "owner_interventions",
                      "factory_defects_found", "factory_defects_fixed"}
@@ -85,7 +86,7 @@ class MetricsTests(unittest.TestCase):
         self.assertIsNone(rows["prs_open"]["value"])
         self.assertEqual(rows["prs_open"]["coverage"], {"covered": 0, "total": 2})
         for key in ("merge_rate", "first_round_approval_share", "review_fix_hours", "median_lead_hours",
-                    "ci_failures_after_submission", "review_rounds_per_pr", "dropped_qualify", "dropped_value",
+                    "ci_failures_after_submission", "independent_review_rounds_per_pr", "dropped_qualify", "dropped_value",
                     "sent_back_review", "coordinator_minutes", "coordinator_tool_calls", "shift_completion_rate",
                     "factory_test_count", "factory_test_runtime", "factory_fix_commits"):
             self.assertIsNone(rows[key]["value"], key)
@@ -301,8 +302,8 @@ class MetricsFileTests(unittest.TestCase):
         self.assertEqual(result["candidates_found"]["value"], 2)
         self.assertEqual(result["median_lead_hours"]["value"], 18)
         self.assertEqual(result["median_lead_hours"]["coverage"], {"covered": 2, "total": 3})
-        self.assertEqual(result["review_rounds_per_pr"]["value"], 1.5)
-        self.assertEqual(result["review_rounds_per_pr"]["coverage"], {"covered": 2, "total": 3})
+        self.assertEqual(result["independent_review_rounds_per_pr"]["value"], 1.5)
+        self.assertEqual(result["independent_review_rounds_per_pr"]["coverage"], {"covered": 2, "total": 3})
         self.assertEqual(result["sent_back_review"]["value"], 1)
 
     def test_numbered_archive_suffixes_match_canonical_rounds_and_deduplicate_renderings(self):
@@ -327,7 +328,7 @@ class MetricsFileTests(unittest.TestCase):
                                  {(r["head"], r["verdict"]) for r in canonical})
                 self.assertEqual(len(rows), 3)
                 result = metrics.compute({"prs": [pr(1)], "items": [item(1, reviews=rows)]}, CONFIG, NOW)["metrics"]
-                self.assertEqual(result["review_rounds_per_pr"]["value"], 3)
+                self.assertEqual(result["independent_review_rounds_per_pr"]["value"], 3)
                 self.assertEqual(result["sent_back_review"]["value"], 1)
 
     def test_record_root_configuration_resolves_shift_logs_and_local_overrides(self):
@@ -351,7 +352,7 @@ class MetricsFileTests(unittest.TestCase):
             result = cli.main(["metrics", "--records-root", str(self.root), "-o", str(output), "--site", str(site)])
         self.assertEqual(result, 0)
         self.assertIn("PRs merged", stdout.getvalue())
-        self.assertEqual(json.loads(output.read_text())["schema_version"], 2)
+        self.assertEqual(json.loads(output.read_text())["schema_version"], 3)
         self.assertTrue((site / "index.html").exists())
         for name, contents in before.items():
             self.assertEqual(pathlib.Path(name).read_bytes(), contents)
@@ -404,7 +405,7 @@ class MetricsSiteTests(unittest.TestCase):
         self.assertNotIn("No maintainer response", page)
         self.assertIn('href="#first-round-quality"', page)
         self.assertIn('id="first-round-quality"', page)
-        self.assertIn("schema 2", page)
+        self.assertIn("schema 3", page)
 
     def test_inline_json_and_html_are_escaped(self):
         data = metrics.compute(snapshot(), CONFIG, NOW)

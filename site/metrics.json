@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "generated_at": "2026-11-20T09:32:54+00:00",
+  "schema_version": 3,
+  "generated_at": "2026-11-20T09:44:15+00:00",
   "links": {
     "repository": "https://github.com/clean99/software-factory",
     "readme": "https://github.com/clean99/software-factory#readme",
@@ -90,17 +90,85 @@
     "first_round_approval_share": {
       "label": "First-round approval",
       "group": "First-round quality",
-      "value": null,
+      "value": 0.518,
       "unit": "percent",
-      "status": "not_tracked",
-      "definition": "Reviewed PRs approved or merged with no changes requested and no fix pushed after submission / reviewed PRs.",
-      "source": "PR outcomes; follow-up review events; item push metadata",
+      "status": "tracked",
+      "definition": "Approved or merged with no non-self change request, no self non-merge commit/force-push after submission, and (if merged) no non-self corrective update before merge / reviewed PRs. Reviewed means merged or at least one non-self APPROVED, CHANGES_REQUESTED or COMMENTED review; self reviews do not count.",
+      "source": "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache",
       "coverage": {
-        "covered": 0,
+        "covered": 129,
         "total": 129
       },
-      "reason": "Complete upstream review and post-submission push histories are not retained. A merge, an approval snapshot or missing fix events cannot establish a clean first round.",
-      "note": "Coverage uses all submitted PRs: the eligible reviewed cohort cannot be established from partial events. Pre-publication independent reviews are not upstream approval."
+      "reason": null,
+      "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push.",
+      "numerator": 59,
+      "denominator": 114,
+      "excluded_histories": 0,
+      "unreviewed": 15
+    },
+    "fixes_pushed_after_review": {
+      "label": "PRs with fixes pushed after review",
+      "group": "Defects",
+      "value": 25,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "PRs with a self non-merge commit or force-push after submission and after the first non-self review. Total updates counts distinct commits and force-push events, not network push batches or proven code defects.",
+      "source": "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push.",
+      "total_pushes": 29
+    },
+    "fixes_pushed_before_review": {
+      "label": "Pre-review self-corrections (defect signal)",
+      "group": "Defects",
+      "value": 7,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "PRs with a self non-merge commit or force-push after submission before any non-self review, including PRs not yet reviewed. Total updates counts distinct commits and force-push events, not network push batches or proven code defects.",
+      "source": "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push.",
+      "total_pushes": 9
+    },
+    "review_fix_hours": {
+      "label": "Review request to pushed fix",
+      "group": "Factory speed",
+      "value": 1.401,
+      "unit": "hours",
+      "status": "tracked",
+      "definition": "Median hours from each non-self CHANGES_REQUESTED review to the next self non-merge commit or force-push. Comment-only reviews are too ambiguous to establish a fix request; requests without a subsequent fix are excluded.",
+      "source": "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push.",
+      "samples": 9,
+      "requests": 9
+    },
+    "review_rounds_per_pr": {
+      "label": "Upstream review rounds per PR",
+      "group": "First-round quality",
+      "value": 1.079,
+      "unit": "rounds",
+      "status": "tracked",
+      "definition": "Mean non-self CHANGES_REQUESTED review count + 1 over reviewed PRs. Distinct from pre-publication independent review.",
+      "source": "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push."
     },
     "median_lead_hours": {
       "label": "Median candidate-to-PR lead time",
@@ -115,36 +183,6 @@
         "total": 129
       },
       "reason": null,
-      "note": null
-    },
-    "review_fix_hours": {
-      "label": "Review request to pushed fix",
-      "group": "Factory speed",
-      "value": null,
-      "unit": "hours",
-      "status": "not_tracked",
-      "definition": "Median hours from an upstream reviewer's change request to the factory's corresponding corrective push.",
-      "source": "Follow-up review events; item push metadata; command receipts",
-      "coverage": {
-        "covered": 0,
-        "total": 129
-      },
-      "reason": "Review events retain observation times, not structured original request times. Latest push metadata is overwritten and does not link a corrective push to a request.",
-      "note": "Coverage uses submitted PRs; no complete request-to-fix pairs are recorded."
-    },
-    "fixes_pushed_after_review": {
-      "label": "Fixes pushed after review",
-      "group": "Defects",
-      "value": null,
-      "unit": "count",
-      "status": "not_tracked",
-      "definition": "Corrective pushes after upstream review, linked to the submitted PR and the review request; unrelated pushes are excluded.",
-      "source": "Follow-up review events; item push metadata; command receipts",
-      "coverage": {
-        "covered": 0,
-        "total": 129
-      },
-      "reason": "There is no retained corrective-push history linked to upstream review requests. A changed head may be a rebase or unrelated work, not a review fix.",
       "note": null
     },
     "candidate_selection_misses": {
@@ -207,8 +245,8 @@
       "reason": "Follow-up stops observing merged PRs; no post-merge incident registry exists. Red/green test reverts are not production reverts.",
       "note": null
     },
-    "review_rounds_per_pr": {
-      "label": "Recorded independent review rounds per PR",
+    "independent_review_rounds_per_pr": {
+      "label": "Pre-publication independent review rounds per PR",
       "group": "First-round quality",
       "value": 1.434,
       "unit": "rounds",
@@ -367,7 +405,7 @@
       "source": "Owner action notes; delegated account-operation records",
       "coverage": {
         "covered": 0,
-        "total": 69
+        "total": 70
       },
       "reason": "Owner action notes mix requests, resolutions and delegated work; account-operation logs record agent actions, not manual interventions. They cannot be counted as human actions.",
       "note": null
@@ -422,7 +460,7 @@
     "factory_test_count": {
       "label": "Factory test count",
       "group": "Factory health",
-      "value": 1526,
+      "value": 1551,
       "unit": "count",
       "status": "tracked",
       "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
@@ -437,7 +475,7 @@
     "factory_test_runtime": {
       "label": "Factory test runtime",
       "group": "Factory health",
-      "value": 165.337,
+      "value": 173.811,
       "unit": "seconds",
       "status": "tracked",
       "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
@@ -488,8 +526,8 @@
       "definition": "Non-merge commits touching factory, bin, schedule, hooks or tests whose subject begins fix, fixes or fixed. Counts commits, not distinct defects.",
       "source": "Local git history",
       "coverage": {
-        "covered": 156,
-        "total": 156
+        "covered": 157,
+        "total": 157
       },
       "reason": null,
       "note": "Only explicitly labeled repair commits; differently worded repairs are excluded."
@@ -504,12 +542,17 @@
         "open_submission_cohort": 7,
         "cohort_merged": 13,
         "cohort_concluded": 15,
+        "first_round_numerator": 9,
+        "first_round_denominator": 15,
+        "history_covered": 22,
+        "history_total": 22,
         "merge_rate": 0.8666666666666667,
         "closed_unmerged_share": 0.13333333333333333,
         "median_lead_hours": 1.07,
         "lead_time_samples": 22,
-        "review_fix_hours": null,
-        "first_round_approval_share": null,
+        "review_fix_hours": 10.097,
+        "review_fix_samples": 2,
+        "first_round_approval_share": 0.6,
         "owner_interventions": null
       },
       {
@@ -519,12 +562,17 @@
         "open_submission_cohort": 7,
         "cohort_merged": 56,
         "cohort_concluded": 61,
+        "first_round_numerator": 38,
+        "first_round_denominator": 65,
+        "history_covered": 68,
+        "history_total": 68,
         "merge_rate": 0.9180327868852459,
         "closed_unmerged_share": 0.08196721311475409,
         "median_lead_hours": 1.442,
         "lead_time_samples": 68,
-        "review_fix_hours": null,
-        "first_round_approval_share": null,
+        "review_fix_hours": 0.914,
+        "review_fix_samples": 6,
+        "first_round_approval_share": 0.5846153846153846,
         "owner_interventions": null
       },
       {
@@ -534,12 +582,17 @@
         "open_submission_cohort": 5,
         "cohort_merged": 27,
         "cohort_concluded": 30,
+        "first_round_numerator": 10,
+        "first_round_denominator": 30,
+        "history_covered": 35,
+        "history_total": 35,
         "merge_rate": 0.9,
         "closed_unmerged_share": 0.1,
         "median_lead_hours": 5.702,
         "lead_time_samples": 35,
-        "review_fix_hours": null,
-        "first_round_approval_share": null,
+        "review_fix_hours": 6.762,
+        "review_fix_samples": 1,
+        "first_round_approval_share": 0.3333333333333333,
         "owner_interventions": null
       },
       {
@@ -549,12 +602,17 @@
         "open_submission_cohort": 0,
         "cohort_merged": 4,
         "cohort_concluded": 4,
+        "first_round_numerator": 2,
+        "first_round_denominator": 4,
+        "history_covered": 4,
+        "history_total": 4,
         "merge_rate": 1.0,
         "closed_unmerged_share": 0.0,
         "median_lead_hours": 5.445,
         "lead_time_samples": 4,
         "review_fix_hours": null,
-        "first_round_approval_share": null,
+        "review_fix_samples": 0,
+        "first_round_approval_share": 0.5,
         "owner_interventions": null
       },
       {
@@ -564,11 +622,16 @@
         "open_submission_cohort": 0,
         "cohort_merged": 0,
         "cohort_concluded": 0,
+        "first_round_numerator": 0,
+        "first_round_denominator": 0,
+        "history_covered": 0,
+        "history_total": 0,
         "merge_rate": null,
         "closed_unmerged_share": null,
         "median_lead_hours": null,
         "lead_time_samples": 0,
         "review_fix_hours": null,
+        "review_fix_samples": 0,
         "first_round_approval_share": null,
         "owner_interventions": null
       }
