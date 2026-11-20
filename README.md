@@ -7,7 +7,7 @@ submits pull requests with the evidence attached. It runs unattended twice a day
 This repository is the factory. The pull requests are its output and its evidence;
 the engineering is the point.
 
-[Dashboard](https://clean99.github.io/software-factory/) · [Direction](docs/direction.md) · [Lessons](lessons/LESSONS.md) · [Method](core/METHOD.md)
+[Dashboard](https://clean99.github.io/software-factory/) · [Direction](docs/direction.md) · [Method](core/METHOD.md)
 
 ## The line
 
@@ -50,8 +50,8 @@ flowchart LR
   days, and a new project is explored only when the depth lanes run dry.
 - **Cheaper models for bounded work.** Shifts run on cheaper models. The gates,
   review independence and real test evidence do not change with the model.
-- **Learning loop.** Review misses and maintainer corrections are recorded in
-  [lessons](lessons/LESSONS.md); recurring ones become checks. A weekly retro reads
+- **Learning loop.** Review misses and maintainer corrections are recorded as
+  lessons; recurring ones become checks. A weekly retro reads
   the dashboard, names the bottleneck and records the change it expects to move it.
 
 ## Metrics
