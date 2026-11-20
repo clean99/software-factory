@@ -1,0 +1,373 @@
+{
+  "schema": 1,
+  "files": [
+    "AGENTS.md",
+    "bin/factory",
+    "bin/outbound-guard",
+    "core/METHOD.md",
+    "docs/direction.md",
+    "docs/repairs.md",
+    "factory/__init__.py",
+    "factory/cli.py",
+    "factory/core/__init__.py",
+    "factory/core/briefs.py",
+    "factory/core/checks.py",
+    "factory/core/clean.py",
+    "factory/core/clone_heal.py",
+    "factory/core/clones.py",
+    "factory/core/commit.py",
+    "factory/core/evals.py",
+    "factory/core/gate.py",
+    "factory/core/gitleaks.toml",
+    "factory/core/images.py",
+    "factory/core/leaks.py",
+    "factory/core/ledger.py",
+    "factory/core/lessons.py",
+    "factory/core/metrics.py",
+    "factory/core/metrics_site.py",
+    "factory/core/metrics.html",
+    "factory/core/nextaction.py",
+    "factory/core/notify.py",
+    "factory/core/outbound.py",
+    "factory/core/ownerops.py",
+    "factory/core/privacy.py",
+    "factory/core/privacy_git.py",
+    "factory/core/provenance.py",
+    "factory/core/public-readme.txt",
+    "factory/core/public.py",
+    "factory/core/publication.py",
+    "factory/core/publish_commands.py",
+    "factory/core/published.py",
+    "factory/core/push_head.py",
+    "factory/core/receipts.py",
+    "factory/core/redgreen.py",
+    "factory/core/repos.py",
+    "factory/core/review.py",
+    "factory/core/scan_repo.py",
+    "factory/core/shiftlock.py",
+    "factory/core/slop.py",
+    "factory/core/stopcheck.py",
+    "factory/core/timeline.py",
+    "factory/core/verdicts.py",
+    "factory/extensions.py",
+    "factory/oss/__init__.py",
+    "factory/oss/check_runs.py",
+    "factory/oss/community.py",
+    "factory/oss/disclosure.py",
+    "factory/oss/followup.py",
+    "factory/oss/health.py",
+    "factory/oss/lanes.py",
+    "factory/oss/plan.py",
+    "factory/oss/policy.py",
+    "factory/oss/pr_signals.py",
+    "factory/oss/profile_readme.py",
+    "factory/oss/qualify.py",
+    "factory/oss/retro.py",
+    "factory/oss/ship.py",
+    "factory/oss/submit.py",
+    "factory/oss/sync.py",
+    "factory/oss/thread_reply.py",
+    "factory/oss/watch.py",
+    "factory/util.py",
+    "hooks/guard-bash.py",
+    "lines/oss/craft/handoff.md",
+    "lines/oss/craft/issue-first.md",
+    "lines/oss/craft/plugins-and-adapters.md",
+    "lines/oss/craft/pr-text.md",
+    "lines/oss/craft/screenshots.md",
+    "lines/oss/craft/selection.md",
+    "lines/oss/craft/stacked.md",
+    "lines/oss/craft/upstream.md",
+    "lines/oss/policy.md",
+    "lines/oss/repos/Arize-ai__phoenix.rules.json",
+    "lines/oss/risk-classes.json",
+    "lines/oss/roles/_common.md",
+    "lines/oss/roles/coordinator-review.md",
+    "lines/oss/roles/fix.md",
+    "lines/oss/roles/follow.md",
+    "lines/oss/roles/implement.md",
+    "lines/oss/roles/record.md",
+    "lines/oss/roles/review.md",
+    "lines/oss/roles/scout.md",
+    "lines/oss/roles/takeover.md",
+    "lines/oss/roles/value-review.md",
+    "lines/oss/templates/design.md",
+    "lines/oss/templates/interview.md",
+    "lines/oss/templates/pr.md",
+    "lines/oss/templates/proposal.md",
+    "lines/oss/templates/review.md",
+    "lines/oss/templates/validation.md",
+    "lines/oss/templates/verify.md",
+    "schedule/agent-shift.py",
+    "schedule/eval-run.js",
+    "schedule/oss-wave.js",
+    "schedule/session-shift.md",
+    "schedule/shift-prompt.md",
+    "tests/fixtures/scouting-evidence.json",
+    "tests/run_suite.py",
+    "tests/support.py",
+    "tests/test_agent_shift.py",
+    "tests/test_checks.py",
+    "tests/test_ci_cancelled.py",
+    "tests/test_clone_loop.py",
+    "tests/test_clones.py",
+    "tests/test_commit_lock.py",
+    "tests/test_disclosure.py",
+    "tests/test_metrics.py",
+    "tests/test_followup_parallel.py",
+    "tests/test_next.py",
+    "tests/test_observation_recovery.py",
+    "tests/test_outbound_regressions.py",
+    "tests/test_ownerops.py",
+    "tests/test_park_and_provenance_names.py",
+    "tests/test_plan_influence.py",
+    "tests/test_policy_defaults.py",
+    "tests/test_provenance_evidence.py",
+    "tests/test_public_export.py",
+    "tests/test_qualify_cli.py",
+    "tests/test_receipts.py",
+    "tests/test_record_loop.py",
+    "tests/test_release_path.py",
+    "tests/test_reply.py",
+    "tests/test_repo_rename.py",
+    "tests/test_review.py",
+    "tests/test_scouting_evidence.py",
+    "tests/test_suite_runner.py",
+    "tests/test_sync.py",
+    "tests/test_watch.py"
+  ],
+  "readme_template": "factory/core/public-readme.txt",
+  "repo_renames": {
+    "facebook/lexical": "meta/lexical"
+  },
+  "reviewed_source_lines": {
+    "factory/core/metrics.py": [
+      {
+        "sha256": "e484bf87aa50b8b0b404c90eeb07d7b928afc61984158b9c671b7c99c2de0567",
+        "category": "internal hostname",
+        "reason": "Escaped public GitHub URL validation regex, not an internal host."
+      }
+    ],
+    "tests/test_metrics.py": [
+      {
+        "sha256": "c920d357dface1a9f7fdaafb755c47e2d750b3d181aa2ad4c3c0652c318c90bb",
+        "category": "credentials in URL",
+        "reason": "Reserved example.test URL with synthetic credentials in a rejection test."
+      }
+    ],
+    "factory/util.py": [
+      {
+        "sha256": "be787f3fb2c06bceb070b178a020ae280b1423e91170820d418ea9838b4e7485",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/receipts.py": [
+      {
+        "sha256": "02163ac302d9c3ce20815fb7814cae76b72f27dc7f05d3ce4b7c7e9ffb94779e",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      },
+      {
+        "sha256": "5eb4d2bb92600d1accb68dd5f593d241e0b69d0578ea5ed404ee936461a158ea",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/clean.py": [
+      {
+        "sha256": "2600d1b371ce9344f01ac91815eff983e74d563bff49f7d8f43f671e0a33685d",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/ownerops.py": [
+      {
+        "sha256": "3cbc4ce9fb3caf883acebb3c9f6415e4eb9401b9699bb23579492d57c75a424c",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/verdicts.py": [
+      {
+        "sha256": "31735c749b7552d8df984540d0382a9b4015c234a0df70e1360558e7ea4c7ca0",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/nextaction.py": [
+      {
+        "sha256": "db2d9c63aa843357b8a796c9da539e46b90d2151a7c633c14e7281a750a853f0",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/gate.py": [
+      {
+        "sha256": "a2d11d4a542eaa56308f2799eaed9d9be35966c108fdc3621b828649c4b38588",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      },
+      {
+        "sha256": "936adbf221265587893279f05af761e4d2eda79cd2d6b821b47496dbfd9bcc40",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/publication.py": [
+      {
+        "sha256": "e1880f2f8594a1e9744e94623b49942d6c64287a246a9376b66c7ae4ba537006",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/provenance.py": [
+      {
+        "sha256": "510157d8af3449dfc7c3480555f37245a083d8e87a39b9d1edc91ae52e372128",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      },
+      {
+        "sha256": "b2b41c9915045e239841855b56b72733e102923d2ea100d025dc6ffe2b8c354b",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "factory/core/privacy.py": [
+      {
+        "sha256": "739aa50b13a796bead1853f21f37add721301e64a550def9476decda85cd589b",
+        "category": "local identity",
+        "reason": "Generic detector definition for document URL domains, not a local identity or document."
+      },
+      {
+        "sha256": "739aa50b13a796bead1853f21f37add721301e64a550def9476decda85cd589b",
+        "category": "private reference",
+        "reason": "Generic detector definition for document URL domains, not a private reference."
+      },
+      {
+        "sha256": "f4cacaf3fdbd4a8a771e30b8748f2aa1cd5c2903a2ccafedd208ee0c75673fc0",
+        "category": "agent temporary path",
+        "reason": "Static detector definition: reserved network range or generic path signature, not a private endpoint."
+      },
+      {
+        "sha256": "bf9d9316bf219ab791f4ab850e15a1a5386cc0f53315c1d5ca31301bfadcf885",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      },
+      {
+        "sha256": "9305e420f753f0732d68115a2af3a656c26686307b93ce794938c8c519f4855f",
+        "category": "private IP",
+        "reason": "Static detector definition: reserved network range or generic path signature, not a private endpoint."
+      }
+    ],
+    "factory/oss/qualify.py": [
+      {
+        "sha256": "dcd174c65d7fc44b9b2b4acb27ff3a078e9b895e6afe668609e03438cb4bd713",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      },
+      {
+        "sha256": "5ad50f70efdaa792decd9ae6e6090042151d345e25829f3a3a9f8f3962ea8d0d",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "schedule/agent-shift.py": [
+      {
+        "sha256": "5b0951cdbe16fe2410a7fb432660cd422c6f6f28f03117f5ad0549cb10d20c52",
+        "category": "session cookie",
+        "reason": "Subprocess handle assignment, not a session credential."
+      },
+      {
+        "sha256": "c60903de64e736285dd42c79498179463efc687893b893811257d0ede3ae8c2c",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ],
+    "tests/test_review.py": [
+      {
+        "sha256": "b823c3e9b29703143f99a3691f3ef85c96622d817875fd5df898e5a92ba632ed",
+        "category": "internal hostname",
+        "reason": "Deliberately malformed synthetic URL in a rejection test; not a live host."
+      }
+    ],
+    "tests/test_sync.py": [
+      {
+        "sha256": "f11f96e83adc69f44fba8ac3760b0610245e9d9cf7a05764adbd95bd9374f20b",
+        "category": "internal hostname",
+        "reason": "Deliberately malformed synthetic URL in a rejection test; not a live host."
+      }
+    ],
+    "tests/test_public_export.py": [
+      {
+        "sha256": "9400ba4dbab008fc224645a807f3e93adfc8160f3c33d7339b677281cb2a9da8",
+        "category": "internal hostname",
+        "reason": "Python method expression or escaped public URL regular expression, not an internal host."
+      }
+    ]
+  },
+  "generated": {
+    ".gitignore": "workspace/\nruns/\n.factory.local.json\n.receipt-key*\n__pycache__/\n*.pyc\nshift-logs/\n.shift-*.json\n*.lock\n",
+    "ledger/prs.json": "[]\n",
+    "lines/oss/profile-groups.json": "{\"groups\": []}\n",
+    "lines/oss/lanes.json": "{\"depth\": [], \"explore\": []}\n",
+    "lessons/LESSONS.md": "# Lessons\n\nPrivate operational records are not part of this snapshot. Add local lessons with `bin/factory lessons add`.\n"
+  },
+  "tests": {
+    "command": "python3 tests/run_suite.py --jobs 4",
+    "included": [
+      "test_agent_shift",
+      "test_checks",
+      "test_ci_cancelled",
+      "test_clone_loop",
+      "test_clones",
+      "test_commit_lock",
+      "test_disclosure",
+      "test_metrics",
+      "test_followup_parallel",
+      "test_next",
+      "test_observation_recovery",
+      "test_outbound_regressions",
+      "test_ownerops",
+      "test_park_and_provenance_names",
+      "test_plan_influence",
+      "test_policy_defaults",
+      "test_provenance_evidence",
+      "test_qualify_cli",
+      "test_receipts",
+      "test_record_loop",
+      "test_release_path",
+      "test_reply",
+      "test_repo_rename",
+      "test_review",
+      "test_scouting_evidence",
+      "test_suite_runner",
+      "test_sync",
+      "test_watch",
+      "test_public_export"
+    ],
+    "excluded": {
+      "test_briefs.py": "Private documents, lesson/evaluation records or live lane fixtures.",
+      "test_clone_heal.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_docs.py": "Private documents, lesson/evaluation records or live lane fixtures.",
+      "test_evals.py": "Private documents, lesson/evaluation records or live lane fixtures.",
+      "test_factory.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_followup_threads.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_lanes.py": "Private documents, lesson/evaluation records or live lane fixtures.",
+      "test_lessons.py": "Private documents, lesson/evaluation records or live lane fixtures.",
+      "test_privacy.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_privacy_final.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_privacy_merge.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_privacy_partial_clone.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_privacy_r4.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_profile_check.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_publication.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_push_head.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_scan_repo.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_ship.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_state_v4.py": "Literal privacy/identity/leak fixtures; retained in the private full suite, not scrubbed into a misleading passing test.",
+      "test_support.py": "Private documents, lesson/evaluation records or live lane fixtures."
+    }
+  },
+  "scrub": []
+}

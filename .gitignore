@@ -1,0 +1,9 @@
+workspace/
+runs/
+.factory.local.json
+.receipt-key*
+__pycache__/
+*.pyc
+shift-logs/
+.shift-*.json
+*.lock

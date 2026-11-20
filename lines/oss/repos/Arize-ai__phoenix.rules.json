@@ -1,0 +1,9 @@
+{
+  "requires": [
+    {
+      "changed": "js/packages/**",
+      "needs": "js/.changeset/*.md",
+      "why": "REVIEW.md requires a changeset for changes to packages under js/packages/ (L-045)."
+    }
+  ]
+}

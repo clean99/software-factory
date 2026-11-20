@@ -1,0 +1,607 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-11-20T09:21:29+00:00",
+  "links": {
+    "repository": "https://github.com/clean99/software-factory",
+    "readme": "https://github.com/clean99/software-factory#readme",
+    "direction": "https://github.com/clean99/software-factory/blob/HEAD/docs/direction.md",
+    "dashboard": "https://clean99.github.io/software-factory/"
+  },
+  "metrics": {
+    "prs_opened": {
+      "label": "PRs opened",
+      "group": "Output",
+      "value": 129,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "Distinct pull request URLs in the ledger, including all outcomes.",
+      "source": "PR ledger: saved outcomes",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": null
+    },
+    "prs_merged": {
+      "label": "PRs merged",
+      "group": "Output",
+      "value": 100,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "Distinct PRs with a saved merged outcome.",
+      "source": "PR ledger: saved outcomes",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Saved state only; this command does not refresh GitHub."
+    },
+    "prs_open": {
+      "label": "PRs open",
+      "group": "Output",
+      "value": 19,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "Distinct PRs with a saved open outcome.",
+      "source": "PR ledger: saved outcomes",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Saved state only; this command does not refresh GitHub."
+    },
+    "merge_rate": {
+      "label": "Merge rate",
+      "group": "Acceptance",
+      "value": 0.909,
+      "unit": "percent",
+      "status": "partial",
+      "definition": "Merged / (merged + closed without merge). Open and unclassified outcomes are excluded.",
+      "source": "PR ledger: saved outcomes",
+      "coverage": {
+        "covered": 110,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Coverage counts concluded PRs against all classified PRs; open PRs are not failures.",
+      "numerator": 100,
+      "denominator": 110
+    },
+    "closed_unmerged_share": {
+      "label": "Closed without merge",
+      "group": "Acceptance",
+      "value": 0.091,
+      "unit": "percent",
+      "status": "partial",
+      "definition": "Closed without merge / (merged + closed without merge).",
+      "source": "PR ledger: saved outcomes",
+      "coverage": {
+        "covered": 110,
+        "total": 129
+      },
+      "reason": null,
+      "note": null,
+      "numerator": 10,
+      "denominator": 110
+    },
+    "first_round_approval_share": {
+      "label": "First-round approval",
+      "group": "First-round quality",
+      "value": null,
+      "unit": "percent",
+      "status": "not_tracked",
+      "definition": "Reviewed PRs approved or merged with no changes requested and no fix pushed after submission / reviewed PRs.",
+      "source": "PR outcomes; follow-up review events; item push metadata",
+      "coverage": {
+        "covered": 0,
+        "total": 129
+      },
+      "reason": "Complete upstream review and post-submission push histories are not retained. A merge, an approval snapshot or missing fix events cannot establish a clean first round.",
+      "note": "Coverage uses all submitted PRs: the eligible reviewed cohort cannot be established from partial events. Pre-publication independent reviews are not upstream approval."
+    },
+    "median_lead_hours": {
+      "label": "Median candidate-to-PR lead time",
+      "group": "Factory speed",
+      "value": 2.453,
+      "unit": "hours",
+      "status": "tracked",
+      "definition": "Median hours from the persisted candidate item's creation to PR submission; scouting before item creation is not recorded. Date-only, naive and reversed timestamps are excluded.",
+      "source": "Item metadata: created_at; PR ledger: submitted_at",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": null
+    },
+    "review_fix_hours": {
+      "label": "Review request to pushed fix",
+      "group": "Factory speed",
+      "value": null,
+      "unit": "hours",
+      "status": "not_tracked",
+      "definition": "Median hours from an upstream reviewer's change request to the factory's corresponding corrective push.",
+      "source": "Follow-up review events; item push metadata; command receipts",
+      "coverage": {
+        "covered": 0,
+        "total": 129
+      },
+      "reason": "Review events retain observation times, not structured original request times. Latest push metadata is overwritten and does not link a corrective push to a request.",
+      "note": "Coverage uses submitted PRs; no complete request-to-fix pairs are recorded."
+    },
+    "fixes_pushed_after_review": {
+      "label": "Fixes pushed after review",
+      "group": "Defects",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "Corrective pushes after upstream review, linked to the submitted PR and the review request; unrelated pushes are excluded.",
+      "source": "Follow-up review events; item push metadata; command receipts",
+      "coverage": {
+        "covered": 0,
+        "total": 129
+      },
+      "reason": "There is no retained corrective-push history linked to upstream review requests. A changed head may be a rebase or unrelated work, not a review fix.",
+      "note": null
+    },
+    "candidate_selection_misses": {
+      "label": "Candidate-selection misses",
+      "group": "Defects",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "PRs closed without merge because they were duplicate, already fixed or unwanted; each PR counts once.",
+      "source": "PR ledger: closed outcomes; follow-up closure events",
+      "coverage": {
+        "covered": 0,
+        "total": 10
+      },
+      "reason": "Closed outcomes have no structured closure-reason classification. Private notes and generic closed events cannot reliably distinguish selection misses from other closures.",
+      "note": null
+    },
+    "ci_failures_after_submission": {
+      "label": "PRs with observed CI failures",
+      "group": "Defects",
+      "value": 4,
+      "unit": "count",
+      "status": "partial",
+      "definition": "Distinct submitted PRs with a failing CI snapshot or a ci-failing follow-up event. Repeated observations count once; this is not a code-caused bug rate.",
+      "source": "PR ledger: checks; follow-up events: ci-failing",
+      "coverage": {
+        "covered": 119,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Observed minimum only. Successful latest checks do not prove that earlier runs passed; failures on the base or infrastructure are not attributed to the PR."
+    },
+    "post_merge_reverts": {
+      "label": "Post-merge reverts",
+      "group": "Defects",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "Merged PRs with a confirmed subsequent revert.",
+      "source": "Follow-up events; PR ledger",
+      "coverage": {
+        "covered": 0,
+        "total": 100
+      },
+      "reason": "Follow-up stops observing merged PRs; no post-merge incident registry exists. Red/green test reverts are not production reverts.",
+      "note": null
+    },
+    "post_merge_regressions": {
+      "label": "Post-merge regressions",
+      "group": "Defects",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "Merged PRs with a confirmed subsequent regression.",
+      "source": "Follow-up events; PR ledger",
+      "coverage": {
+        "covered": 0,
+        "total": 100
+      },
+      "reason": "Follow-up stops observing merged PRs; no post-merge incident registry exists. Red/green test reverts are not production reverts.",
+      "note": null
+    },
+    "review_rounds_per_pr": {
+      "label": "Recorded independent review rounds per PR",
+      "group": "First-round quality",
+      "value": 1.434,
+      "unit": "rounds",
+      "status": "partial",
+      "definition": "Mean preserved independent review verdicts per PR with review records; current and numbered archives are deduplicated by head and verdict.",
+      "source": "Item review files and numbered review archives",
+      "coverage": {
+        "covered": 129,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Pre-publication independent reviews, not upstream maintainer rounds. Missing or overwritten archives undercount rounds."
+    },
+    "candidates_found": {
+      "label": "Recorded candidates",
+      "group": "Filtering",
+      "value": 192,
+      "unit": "count",
+      "status": "partial",
+      "definition": "OSS item records persisted under the runs directory; pre-item scouting ideas are not counted.",
+      "source": "Item metadata",
+      "coverage": {
+        "covered": 192,
+        "total": 192
+      },
+      "reason": null,
+      "note": "This is the persisted candidate population, not all opportunities inspected."
+    },
+    "dropped_qualify": {
+      "label": "Rejected at qualification",
+      "group": "Filtering",
+      "value": 6,
+      "unit": "count",
+      "status": "partial",
+      "definition": "Candidates with a saved skip verdict. Earlier rejections overwritten by a later check are not recoverable.",
+      "source": "Item qualify records",
+      "coverage": {
+        "covered": 190,
+        "total": 192
+      },
+      "reason": null,
+      "note": null
+    },
+    "dropped_value": {
+      "label": "Dropped at value review",
+      "group": "Filtering",
+      "value": 0,
+      "unit": "count",
+      "status": "partial",
+      "definition": "Candidates with a complete structured value review whose verdict is drop. Legacy prose is not classified.",
+      "source": "Item value-review records",
+      "coverage": {
+        "covered": 6,
+        "total": 192
+      },
+      "reason": null,
+      "note": null
+    },
+    "sent_back_review": {
+      "label": "Sent back by independent review",
+      "group": "Filtering",
+      "value": 44,
+      "unit": "count",
+      "status": "partial",
+      "definition": "Candidates with at least one preserved fix-needed independent review verdict; each candidate counts once.",
+      "source": "Item review files and numbered review archives",
+      "coverage": {
+        "covered": 160,
+        "total": 192
+      },
+      "reason": null,
+      "note": null
+    },
+    "agent_minutes_per_pr": {
+      "label": "Agent minutes per PR",
+      "group": "Efficiency",
+      "value": null,
+      "unit": "minutes",
+      "status": "not_tracked",
+      "definition": "Total attributable agent minutes / PRs in the same work cohort.",
+      "source": "Shift summaries; item command receipts",
+      "coverage": {
+        "covered": 0,
+        "total": 129
+      },
+      "reason": "Shift telemetry excludes nested workers and has no PR attribution. Command runtime is not agent time; dividing partial recent shifts by lifetime PR outcomes would be misleading.",
+      "note": null
+    },
+    "tool_calls_per_pr": {
+      "label": "Tool calls per PR",
+      "group": "Efficiency",
+      "value": null,
+      "unit": "calls",
+      "status": "not_tracked",
+      "definition": "Total attributable tool calls / PRs in the same work cohort.",
+      "source": "Shift summaries; item command receipts",
+      "coverage": {
+        "covered": 0,
+        "total": 129
+      },
+      "reason": "Shift telemetry excludes nested workers and has no PR attribution. Command runtime is not agent time; dividing partial recent shifts by lifetime PR outcomes would be misleading.",
+      "note": null
+    },
+    "agent_minutes_per_merge": {
+      "label": "Agent minutes per merged PR",
+      "group": "Efficiency",
+      "value": null,
+      "unit": "minutes",
+      "status": "not_tracked",
+      "definition": "Total attributable agent minutes / merged PRs in the same work cohort.",
+      "source": "Shift summaries; item command receipts",
+      "coverage": {
+        "covered": 0,
+        "total": 100
+      },
+      "reason": "Shift telemetry excludes nested workers and has no PR attribution. Command runtime is not agent time; dividing partial recent shifts by lifetime PR outcomes would be misleading.",
+      "note": null
+    },
+    "tool_calls_per_merge": {
+      "label": "Tool calls per merged PR",
+      "group": "Efficiency",
+      "value": null,
+      "unit": "calls",
+      "status": "not_tracked",
+      "definition": "Total attributable tool calls / merged PRs in the same work cohort.",
+      "source": "Shift summaries; item command receipts",
+      "coverage": {
+        "covered": 0,
+        "total": 100
+      },
+      "reason": "Shift telemetry excludes nested workers and has no PR attribution. Command runtime is not agent time; dividing partial recent shifts by lifetime PR outcomes would be misleading.",
+      "note": null
+    },
+    "unattended_shifts": {
+      "label": "Shifts run unattended",
+      "group": "Efficiency",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "Completed shifts with no manual intervention from start to finish.",
+      "source": "Shift summaries; owner actions",
+      "coverage": {
+        "covered": 0,
+        "total": 11
+      },
+      "reason": "Automated launch and exit status do not establish absence of human help. Shifts have no intervention flag or linked intervention log.",
+      "note": null
+    },
+    "owner_interventions": {
+      "label": "Owner interventions per week",
+      "group": "Efficiency",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "Manual interventions actually performed, grouped by UTC week.",
+      "source": "Owner action notes; delegated account-operation records",
+      "coverage": {
+        "covered": 0,
+        "total": 69
+      },
+      "reason": "Owner action notes mix requests, resolutions and delegated work; account-operation logs record agent actions, not manual interventions. They cannot be counted as human actions.",
+      "note": null
+    },
+    "coordinator_minutes": {
+      "label": "Recorded coordinator minutes",
+      "group": "Efficiency",
+      "value": 334.1,
+      "unit": "minutes",
+      "status": "partial",
+      "definition": "Sum of active_minutes in saved automated-shift summaries; not full-factory cost.",
+      "source": "Shift summaries",
+      "coverage": {
+        "covered": 11,
+        "total": 11
+      },
+      "reason": null,
+      "note": "Coordinator only. Worker sessions are excluded by the shift summarizer; telemetry covers only retained shift logs."
+    },
+    "coordinator_tool_calls": {
+      "label": "Recorded coordinator tool calls",
+      "group": "Efficiency",
+      "value": 880,
+      "unit": "calls",
+      "status": "partial",
+      "definition": "Sum of tool_calls in saved automated-shift summaries; not full-factory cost.",
+      "source": "Shift summaries",
+      "coverage": {
+        "covered": 11,
+        "total": 11
+      },
+      "reason": null,
+      "note": "Coordinator only. Worker sessions are excluded by the shift summarizer; telemetry covers only retained shift logs."
+    },
+    "shift_completion_rate": {
+      "label": "Shift completion rate",
+      "group": "Factory health",
+      "value": 0.818,
+      "unit": "percent",
+      "status": "tracked",
+      "definition": "Automated shift summaries with status exactly exited 0 / summaries with a recorded terminal status. Failed starts count against completion.",
+      "source": "Shift summaries: status",
+      "coverage": {
+        "covered": 11,
+        "total": 11
+      },
+      "reason": null,
+      "note": null,
+      "numerator": 9,
+      "denominator": 11
+    },
+    "factory_test_count": {
+      "label": "Factory test count",
+      "group": "Factory health",
+      "value": 1526,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
+      "source": "Full-suite runner JSON report supplied with --suite-report",
+      "coverage": {
+        "covered": 1,
+        "total": 1
+      },
+      "reason": null,
+      "note": "Recorded suite passed."
+    },
+    "factory_test_runtime": {
+      "label": "Factory test runtime",
+      "group": "Factory health",
+      "value": 165.337,
+      "unit": "seconds",
+      "status": "tracked",
+      "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
+      "source": "Full-suite runner JSON report supplied with --suite-report",
+      "coverage": {
+        "covered": 1,
+        "total": 1
+      },
+      "reason": null,
+      "note": "Recorded suite passed."
+    },
+    "factory_defects_found": {
+      "label": "Factory defects found",
+      "group": "Factory health",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "Distinct confirmed factory defects found.",
+      "source": "Factory git history; no defect registry",
+      "coverage": {
+        "covered": 0,
+        "total": 0
+      },
+      "reason": "There is no stable defect identifier linking discovery and resolution. A repair commit may fix several defects or revisit one; commit counts are shown separately.",
+      "note": null
+    },
+    "factory_defects_fixed": {
+      "label": "Factory defects fixed",
+      "group": "Factory health",
+      "value": null,
+      "unit": "count",
+      "status": "not_tracked",
+      "definition": "Distinct confirmed factory defects fixed.",
+      "source": "Factory git history; no defect registry",
+      "coverage": {
+        "covered": 0,
+        "total": 0
+      },
+      "reason": "There is no stable defect identifier linking discovery and resolution. A repair commit may fix several defects or revisit one; commit counts are shown separately.",
+      "note": null
+    },
+    "factory_fix_commits": {
+      "label": "Factory repair commits",
+      "group": "Factory health",
+      "value": 19,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "Non-merge commits touching factory, bin, schedule, hooks or tests whose subject begins fix, fixes or fixed. Counts commits, not distinct defects.",
+      "source": "Local git history",
+      "coverage": {
+        "covered": 153,
+        "total": 153
+      },
+      "reason": null,
+      "note": "Only explicitly labeled repair commits; differently worded repairs are excluded."
+    }
+  },
+  "weekly": {
+    "rows": [
+      {
+        "week": "2026-10-19",
+        "opened": 22,
+        "merged": 3,
+        "open_submission_cohort": 7,
+        "cohort_merged": 13,
+        "cohort_concluded": 15,
+        "merge_rate": 0.8666666666666667,
+        "closed_unmerged_share": 0.13333333333333333,
+        "median_lead_hours": 1.07,
+        "lead_time_samples": 22,
+        "review_fix_hours": null,
+        "first_round_approval_share": null,
+        "owner_interventions": null
+      },
+      {
+        "week": "2026-10-26",
+        "opened": 68,
+        "merged": 45,
+        "open_submission_cohort": 7,
+        "cohort_merged": 56,
+        "cohort_concluded": 61,
+        "merge_rate": 0.9180327868852459,
+        "closed_unmerged_share": 0.08196721311475409,
+        "median_lead_hours": 1.442,
+        "lead_time_samples": 68,
+        "review_fix_hours": null,
+        "first_round_approval_share": null,
+        "owner_interventions": null
+      },
+      {
+        "week": "2026-11-02",
+        "opened": 35,
+        "merged": 39,
+        "open_submission_cohort": 5,
+        "cohort_merged": 27,
+        "cohort_concluded": 30,
+        "merge_rate": 0.9,
+        "closed_unmerged_share": 0.1,
+        "median_lead_hours": 5.702,
+        "lead_time_samples": 35,
+        "review_fix_hours": null,
+        "first_round_approval_share": null,
+        "owner_interventions": null
+      },
+      {
+        "week": "2026-11-09",
+        "opened": 4,
+        "merged": 12,
+        "open_submission_cohort": 0,
+        "cohort_merged": 4,
+        "cohort_concluded": 4,
+        "merge_rate": 1.0,
+        "closed_unmerged_share": 0.0,
+        "median_lead_hours": 5.445,
+        "lead_time_samples": 4,
+        "review_fix_hours": null,
+        "first_round_approval_share": null,
+        "owner_interventions": null
+      },
+      {
+        "week": "2026-11-16",
+        "opened": 0,
+        "merged": 1,
+        "open_submission_cohort": 0,
+        "cohort_merged": 0,
+        "cohort_concluded": 0,
+        "merge_rate": null,
+        "closed_unmerged_share": null,
+        "median_lead_hours": null,
+        "lead_time_samples": 0,
+        "review_fix_hours": null,
+        "first_round_approval_share": null,
+        "owner_interventions": null
+      }
+    ],
+    "coverage": {
+      "submission_dates": {
+        "covered": 129,
+        "total": 129
+      },
+      "merge_dates": {
+        "covered": 100,
+        "total": 100
+      }
+    }
+  },
+  "input_quality": {
+    "missing_files": 188,
+    "invalid_pr_rows": 0,
+    "duplicate_pr_rows": 0
+  },
+  "population": {
+    "prs": 129,
+    "items": 192,
+    "shift_summaries": 11,
+    "command_receipts": 350
+  },
+  "methodology": [
+    "Read-only snapshot of retained local evidence. No GitHub refresh is performed.",
+    "Coverage is eligible records with needed fields / the stated population, not proof of complete historical capture.",
+    "Partial means observed records only. Not tracked means the evidence cannot support the metric; missing values are never zero.",
+    "All weeks start Monday in UTC. Acceptance uses submission cohorts at their current saved outcome, not week-of-decision cohorts.",
+    "Weekly open counts are currently open PRs grouped by submission week, not historical week-end inventory.",
+    "Factory speed measures candidate-to-submission lead time and request-to-fix work, not waiting for maintainers. Response/merge latency and silent-thread share are intentionally excluded.",
+    "Zero event counts mean no events in retained records for that week. Input read errors and omitted dates can undercount."
+  ]
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "shared-state-writers",
+    "question": "Does the diff change a decision that reads shared mutable state?",
+    "how_to_probe": "List every writer and its pipeline phase, including late writes, then exercise each affected writer path and check that dependent exports, imports or other state stay consistent before and after the first read.",
+    "lessons": ["L-072"]
+  },
+  {
+    "id": "mode-consumers",
+    "question": "Does the diff reuse or change the meaning of a mode, flag or data shape that other code consumes?",
+    "how_to_probe": "State the old invariant, list explicit and implicit readers, and exercise every reader reached by the new case; for export modes include imports, reexports, export-star, facades, reassigned bindings and affected output formats.",
+    "lessons": ["L-074"]
+  },
+  {
+    "id": "siblings",
+    "question": "Does the diff fix a defect whose mechanism also exists in sibling adapters, providers or plugins?",
+    "how_to_probe": "Audit every sibling for the same defect and record affected, fixed or not-applicable with reasons and test commands instead of fixing one sibling at a time.",
+    "lessons": ["L-015"]
+  },
+  {
+    "id": "server-accepts",
+    "question": "Does the diff newly send a value to a server implemented in this repository?",
+    "how_to_probe": "Read the receiving route, validation and storage code, then exercise the real handler rather than only a mocked transport to establish that the server accepts and uses the value.",
+    "lessons": ["L-041"]
+  },
+  {
+    "id": "streamed-input",
+    "question": "Does the diff change how streamed or accumulated input is interpreted?",
+    "how_to_probe": "Replay upstream-produced chunks through the real accumulator, including fields that arrive late, completion and reloaded history, and check identity and content across those stages rather than only hand-built completed messages.",
+    "lessons": ["L-058"]
+  },
+  {
+    "id": "contract-owner",
+    "question": "Does the diff change behavior that passes through a shared contract-owning layer?",
+    "how_to_probe": "Trace the failing behavior through shims, adapters, barrels and wrappers, read the owning layer's contract and existing handling, and test the repair there rather than treating an older caller workaround as authority.",
+    "lessons": ["L-048"]
+  },
+  {
+    "id": "ci-parity",
+    "question": "Does the diff touch packages or files covered by the repository's CI checks?",
+    "how_to_probe": "Read CI workflows for the touched packages and compare their commands, versions and options with item.json required_checks, including required lint, type checks, builds and tests rather than just a focused test. Explain any omissions: command labels do not establish test coverage. Check that redgreen.json records the current focused test command and directory, and cite clean current-head receipts.",
+    "lessons": []
+  },
+  {
+    "id": "pr-text",
+    "question": "Does the diff or its PR text need to satisfy the repository's contribution template, issue-link or disclosure rules?",
+    "how_to_probe": "Compare the current pr.md with the repository's template, contribution instructions and automation, checking issue links, required disclosure and its position, compatibility claims and statements of test coverage.",
+    "lessons": []
+  }
+]

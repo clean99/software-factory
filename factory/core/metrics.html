@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Software Factory</title>
+<style>
+/* An engineering readout: outcome strip, aligned weekly plots, inspectable evidence tables. */
+:root { --page: #eef1f4; --surface: #fcfcfb; --ink: #172532; --muted: #53606a; --rule: #d9dfe2; --blue: #2a78d6; --orange: #eb6834; --display: "Avenir Next", "Trebuchet MS", sans-serif; --body: "Segoe UI", "Helvetica Neue", sans-serif; --mono: "SFMono-Regular", Consolas, monospace; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page: #131617; --surface: #1a1a19; --ink: #f0efec; --muted: #bac2c8; --rule: #363b3e; --blue: #3987e5; --orange: #d95926; color-scheme: dark; } }
+:root[data-theme="dark"] { --page: #131617; --surface: #1a1a19; --ink: #f0efec; --muted: #bac2c8; --rule: #363b3e; --blue: #3987e5; --orange: #d95926; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+a { color: inherit; text-underline-offset: .25em; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, select:focus-visible, summary:focus-visible, .mark-group:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.wrap { max-width: 1320px; margin-inline: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { padding-block: 1.2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.brand { font: 700 1rem var(--display); letter-spacing: -.02em; }
+nav, .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; font-size: .85rem; }
+label { display: inline-flex; gap: .5rem; align-items: center; }
+select { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: .4rem; font: inherit; }
+main { display: grid; gap: 2.5rem; padding-block: 1rem 4rem; }
+.hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 3rem; align-items: end; padding-block: 1.4rem .3rem; }
+.eyebrow { font: .72rem var(--mono); text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+h1 { font: 650 clamp(2.1rem, 5vw, 3.8rem)/1.07 var(--display); letter-spacing: -.045em; max-width: 15ch; margin: .8rem 0; text-wrap: balance; }
+h2 { font: 650 1.45rem var(--display); letter-spacing: -.02em; margin: 0 0 1rem; }
+h3 { font: 650 1.08rem var(--display); margin: 0; }
+p { margin: .6rem 0; max-width: 68ch; }
+.hero p { color: var(--muted); max-width: 47ch; }
+.asof { font: .72rem/1.6 var(--mono); color: var(--muted); overflow-wrap: anywhere; margin-top: 1rem; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border-block: 1px solid var(--rule); }
+.stat { padding: 1.4rem 1.5rem; display: grid; align-content: start; gap: .2rem; min-width: 0; }
+.stat + .stat { border-left: 1px solid var(--rule); }
+.stat-label { font-size: .86rem; }
+.stat strong { font: 650 clamp(2rem, 4vw, 3.1rem)/1.35 var(--display); letter-spacing: -.05em; }
+.stat strong.untracked { font-size: clamp(1.3rem, 3vw, 2rem); letter-spacing: -.03em; }
+small { display: block; font-size: .75rem; color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.chart { background: var(--surface); padding: 1.3rem 1rem 1rem; min-width: 0; position: relative; border: 1px solid var(--rule); }
+.chart-note { font-size: .79rem; color: var(--muted); min-height: 4.9em; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.legend { display: flex; gap: 1rem; font-size: .75rem; min-height: 1.5rem; }
+.chart-unit { font-size: .75rem; color: var(--muted); min-height: 1.5rem; }
+.legend span { display: inline-flex; align-items: center; gap: .4rem; }
+.swatch { display: inline-block; width: 10px; height: 10px; background: var(--blue); }
+.swatch.series-2 { background: var(--orange); }
+.series-1 { fill: var(--blue); stroke: var(--blue); }
+.series-2 { fill: var(--orange); stroke: var(--orange); }
+.bar { stroke: none; }
+.trend { stroke-width: 2; fill: none; }
+.point { stroke: var(--surface); stroke-width: 2; }
+.grid-line { stroke: var(--rule); stroke-width: 1; fill: none; }
+.label-leader { stroke: var(--muted); stroke-width: 1; fill: none; }
+.axis, .direct-label { fill: var(--muted); font-family: var(--body); font-size: 16px; font-variant-numeric: tabular-nums; }
+.direct-label { font-size: 16px; fill: var(--ink); }
+.hit-area { fill: transparent; stroke: none; }
+.crosshair { stroke: var(--muted); stroke-width: 1; opacity: 0; fill: none; }
+.mark-group:hover .crosshair, .mark-group:focus .crosshair { opacity: .5; }
+.tooltip { position: absolute; z-index: 2; left: 1rem; right: 1rem; bottom: 3rem; padding: .6rem; background: var(--surface); color: var(--ink); border: 1px solid var(--rule); font: .75rem/1.5 var(--mono); pointer-events: none; }
+.texture { display: none; }
+.texture-line { stroke: var(--ink); stroke-width: 1; fill: none; }
+[data-texture="on"] .texture { display: block; }
+summary { cursor: pointer; font-size: .8rem; padding-block: .6rem; color: var(--muted); }
+.note { font-size: .84rem; color: var(--muted); }
+.weekly { border-bottom: 1px solid var(--rule); padding-bottom: .5rem; }
+.methods { background: var(--surface); border: 1px solid var(--rule); padding: 1.25rem 1.5rem; }
+.methods ul { margin: 0; padding-left: 1.2rem; color: var(--muted); font-size: .86rem; }
+.methods li + li { margin-top: .45rem; }
+.metrics-section { min-width: 0; }
+.table-scroll { max-width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .84rem; font-variant-numeric: tabular-nums; }
+th { font: 500 .68rem var(--mono); text-transform: uppercase; letter-spacing: .045em; text-align: left; color: var(--muted); border-bottom: 1px solid var(--rule); padding: .8rem .75rem; }
+td { padding: 1rem .75rem; vertical-align: top; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+.metrics-section td:nth-child(1) { width: 19%; min-width: 145px; }
+.metrics-section td:nth-child(2) { width: 17%; min-width: 125px; }
+.metrics-section td:nth-child(3) { width: 43%; min-width: 240px; }
+.metrics-section td:nth-child(4) { width: 21%; min-width: 140px; }
+.metric-name { font-weight: 550; }
+.status { display: block; color: var(--muted); text-transform: uppercase; font: .63rem var(--mono); margin-top: .45rem; }
+.coverage { font-family: var(--mono); display: block; margin-bottom: .4rem; }
+.detail-note { font-size: .8rem; color: var(--muted); margin: .4rem 0 0; }
+.flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; padding: 0; list-style: none; counter-reset: flow; }
+.flow li { counter-increment: flow; border-top: 2px solid var(--rule); padding-top: .8rem; min-width: 0; }
+.flow li::before { content: counter(flow, decimal-leading-zero); color: var(--muted); font: .75rem var(--mono); display: block; margin-bottom: .5rem; }
+.flow p { font-size: .87rem; color: var(--muted); }
+footer { padding-block: 1.5rem 2rem; border-top: 1px solid var(--rule); color: var(--muted); font: .75rem var(--mono); display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
+.empty { padding-block: 3rem; color: var(--muted); }
+[hidden] { display: none !important; }
+@media (max-width: 950px) { .charts { grid-template-columns: 1fr; } .chart-note { min-height: 0; } .chart svg { max-height: 300px; } .hero { gap: 1.5rem; } }
+@media (max-width: 620px) { .hero { grid-template-columns: 1fr; gap: .6rem; } h1 { max-width: 16ch; } .stats { grid-template-columns: repeat(2, 1fr); } .stat { padding: 1rem; } .stat:nth-child(3) { border-left: 0; } .stat:nth-child(n+3) { border-top: 1px solid var(--rule); } .flow { grid-template-columns: 1fr 1fr; } main { gap: 2rem; } .methods { padding: 1rem; } }
+@media print, (forced-colors: active) { .texture { display: block; } .controls { display: none; } }
+</style>
+</head>
+<body>
+<header class="wrap"><a class="brand" href="@@DASHBOARD@@">Software Factory</a><nav aria-label="Main navigation"><a href="@@REPOSITORY@@">Source code</a><a href="#first-round-quality">Quality</a><a href="#method">Method</a></nav></header>
+<main class="wrap">
+<section class="hero"><div><div class="eyebrow">Automated contributions / inspectable evidence</div><h1>Useful code.<br>Measured delivery.</h1></div><div><p>The factory is the portfolio. An openly automated pipeline turns real problems into reviewed contributions. This readout shows its output, acceptance and engineering limits.</p><div class="asof">Snapshot updated <time>@@UPDATED@@</time><br>No live requests. No tracking. No private records.</div></div></section>
+<section class="stats" aria-label="Headline outcomes">@@STATS@@</section>
+<section aria-labelledby="weekly-title"><div class="controls"><h2 id="weekly-title">Delivery over time</h2><label for="theme">Theme <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label><label for="texture"><input id="texture" type="checkbox">Patterned bars</label></div><div class="charts">@@CHARTS@@</div><p class="note">Date coverage — @@DATE_COVERAGE@@. Line-chart vertical axes show percent and hours respectively; gaps mean no eligible observations.</p><details class="weekly"><summary>All weekly output, acceptance and speed values</summary>@@WEEKLY_TABLE@@<p class="note">¹ Currently open PRs by submission week, not historical inventory. ² Merged or closed without merge, by submission week.</p></details></section>
+<section class="methods" id="method"><h2>What the numbers can support</h2><p class="note">@@UNTRACKED@@ metrics are not tracked. A missing measurement is a visible engineering gap, never a zero or a guessed result.</p><ul>@@METHODOLOGY@@</ul><p class="note">Input diagnostics — @@INPUT_QUALITY@@.</p></section>
+@@TABLES@@
+<section><h2>How this factory works</h2><ol class="flow"><li><h3>Find demand</h3><p>Look for unclaimed problems in projects that welcome automated contributions.</p></li><li><h3>Prove the change</h3><p>Qualify the value, make the smallest useful repair and capture executable evidence.</p></li><li><h3>Review independently</h3><p>Separate implementation, independent review and coordinator release checks.</p></li><li><h3>Ship and learn</h3><p>Disclose automation, follow feedback and use acceptance and quality to improve the factory.</p></li></ol><p class="note"><a href="@@README@@">Read the architecture and workflow</a> · <a href="@@DIRECTION@@">Read the portfolio direction and metric contract</a></p></section>
+</main>
+<footer class="wrap"><span>Software Factory · public aggregate snapshot · schema @@SCHEMA@@</span><a href="@@REPOSITORY@@">Inspect the source</a></footer>
+<script id="metrics-data" type="application/json">@@DATA@@</script>
+<script>
+const root = document.documentElement;
+const theme = document.getElementById('theme');
+theme.addEventListener('change', () => {
+  if (theme.value === 'system') delete root.dataset.theme;
+  else root.dataset.theme = theme.value;
+});
+document.getElementById('texture').addEventListener('change', event => {
+  root.dataset.texture = event.target.checked ? 'on' : 'off';
+});
+for (const mark of document.querySelectorAll('[data-tip]')) {
+  const tooltip = mark.closest('.chart').querySelector('.tooltip');
+  const show = () => { tooltip.textContent = mark.dataset.tip; tooltip.hidden = false; };
+  const hide = () => { tooltip.hidden = true; };
+  mark.addEventListener('mouseenter', show);
+  mark.addEventListener('focus', show);
+  mark.addEventListener('mouseleave', hide);
+  mark.addEventListener('blur', hide);
+}
+</script>
+</body>
+</html>
