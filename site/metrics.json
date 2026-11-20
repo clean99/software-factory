@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "generated_at": "2026-11-20T09:48:24+00:00",
+  "generated_at": "2026-11-20T14:36:02+00:00",
   "links": {
     "repository": "https://github.com/clean99/software-factory",
     "readme": "https://github.com/clean99/software-factory#readme",
@@ -248,7 +248,7 @@
     "independent_review_rounds_per_pr": {
       "label": "Pre-publication independent review rounds per PR",
       "group": "First-round quality",
-      "value": 1.434,
+      "value": 1.442,
       "unit": "rounds",
       "status": "partial",
       "definition": "Mean preserved independent review verdicts per PR with review records; current and numbered archives are deduplicated by head and verdict.",
@@ -390,7 +390,7 @@
       "source": "Shift summaries; owner actions",
       "coverage": {
         "covered": 0,
-        "total": 11
+        "total": 12
       },
       "reason": "Automated launch and exit status do not establish absence of human help. Shifts have no intervention flag or linked intervention log.",
       "note": null
@@ -413,14 +413,14 @@
     "coordinator_minutes": {
       "label": "Recorded coordinator minutes",
       "group": "Efficiency",
-      "value": 334.1,
+      "value": 350.2,
       "unit": "minutes",
       "status": "partial",
       "definition": "Sum of active_minutes in saved automated-shift summaries; not full-factory cost.",
       "source": "Shift summaries",
       "coverage": {
-        "covered": 11,
-        "total": 11
+        "covered": 12,
+        "total": 12
       },
       "reason": null,
       "note": "Coordinator only. Worker sessions are excluded by the shift summarizer; telemetry covers only retained shift logs."
@@ -428,14 +428,14 @@
     "coordinator_tool_calls": {
       "label": "Recorded coordinator tool calls",
       "group": "Efficiency",
-      "value": 880,
+      "value": 1007,
       "unit": "calls",
       "status": "partial",
       "definition": "Sum of tool_calls in saved automated-shift summaries; not full-factory cost.",
       "source": "Shift summaries",
       "coverage": {
-        "covered": 11,
-        "total": 11
+        "covered": 12,
+        "total": 12
       },
       "reason": null,
       "note": "Coordinator only. Worker sessions are excluded by the shift summarizer; telemetry covers only retained shift logs."
@@ -443,19 +443,19 @@
     "shift_completion_rate": {
       "label": "Shift completion rate",
       "group": "Factory health",
-      "value": 0.818,
+      "value": 0.833,
       "unit": "percent",
       "status": "tracked",
       "definition": "Automated shift summaries with status exactly exited 0 / summaries with a recorded terminal status. Failed starts count against completion.",
       "source": "Shift summaries: status",
       "coverage": {
-        "covered": 11,
-        "total": 11
+        "covered": 12,
+        "total": 12
       },
       "reason": null,
       "note": null,
-      "numerator": 9,
-      "denominator": 11
+      "numerator": 10,
+      "denominator": 12
     },
     "factory_test_count": {
       "label": "Factory test count",
@@ -655,8 +655,8 @@
   "population": {
     "prs": 129,
     "items": 192,
-    "shift_summaries": 11,
-    "command_receipts": 350
+    "shift_summaries": 12,
+    "command_receipts": 389
   },
   "methodology": [
     "Read-only snapshot of retained local evidence. No GitHub refresh is performed.",
