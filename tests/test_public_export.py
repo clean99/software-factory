@@ -7,7 +7,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -257,12 +257,34 @@ class PublicExportTests(unittest.TestCase):
             self.assertEqual(cli.main(["public", "publish", "--dry-run"]), 0)
         plan.assert_called_once()
 
-    def test_publish_requires_dry_run_and_configured_repo(self):
+    def test_publish_requires_clone_and_configured_repo(self):
+        output = io.StringIO()
         with patch.object(public, "CONFIG", self.config):
-            with self.assertRaisesRegex(SystemExit, "dry-run only"):
-                cli.main(["public", "publish"])
+            with redirect_stdout(output):
+                self.assertEqual(cli.main(["public", "publish"]), 1)
+            self.assertIn("requires --clone", json.loads(output.getvalue())["findings"][0])
             with self.assertRaisesRegex(SystemExit, "must match"):
                 cli.main(["public", "publish", "--dry-run", "--repo", "other/project"])
+
+    def test_cli_publish_forwards_report_and_records_root(self):
+        self.config["public"]["clone"] = str(self.root / "configured-clone")
+        report, records = self.root / "suite.json", self.root / "records"
+        with patch.object(public, "CONFIG", self.config), \
+                patch.object(public, "publish", return_value={"ok": True}) as publish, redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(["public", "publish", "--suite-report", str(report),
+                                       "--records-root", str(records)]), 0)
+            publish.assert_called_once_with(self.config["public"]["clone"], suite_report=report, records_root=records)
+            self.assertEqual(cli.main(["public", "publish", "--clone", str(self.out)]), 0)
+            publish.assert_called_with(self.out)
+
+    def test_local_clone_setting_merges_public_defaults_but_is_not_exported(self):
+        from factory.util import load_config
+
+        self.write("factory.config.json", json.dumps(self.config))
+        self.write(".factory.local.json", json.dumps({"public": {"clone": "workspace/public"}}))
+        config = load_config(self.source)
+        self.assertEqual(config["public"], {**self.config["public"], "clone": "workspace/public"})
+        self.assertNotIn("clone", public.public_config(config)["public"])
 
     def git(self, path, *args):
         env = public.os.environ.copy()
@@ -279,6 +301,159 @@ class PublicExportTests(unittest.TestCase):
         self.git(path, "add", "README.md")
         self.git(path, "commit", "-m", message)
         return path
+
+    @contextmanager
+    def public_transport(self):
+        """Keep the HTTPS identity and real scans; send every transport to a disposable bare repo."""
+        self.bare = self.root / "origin.git"
+        self.clone = self.root / "clone"
+        self.git(self.root, "init", "--bare", "--initial-branch=main", str(self.bare))
+        self.git(self.root, "clone", str(self.bare), str(self.clone))
+        url = "https://github.com/" + self.config["public"]["repository"] + ".git"
+        self.git(self.clone, "remote", "set-url", "origin", url)
+        run, process = public.run, publication.process
+
+        def transport(command, **kwargs):
+            if command[0] == str(public.ROOT / "bin/factory"):
+                self.assertEqual(command[1:], ["push", "-C", str(self.clone), "--", "origin", "main"])
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    code = publication.run("push", ["origin", "main"], self.clone, wrapper=True)
+                return subprocess.CompletedProcess(command, code, stdout.getvalue(), stderr.getvalue())
+            if command[:4] == ["git", "-C", str(self.clone), "fetch"]:
+                command = [str(self.bare) if arg == "origin" else arg for arg in command]
+            return run(command, **kwargs)
+
+        def preflight(command, cwd, **kwargs):
+            self.assertIn(command[:2], (["git", "push"], ["git", "ls-remote"]))
+            command = [str(self.bare) if arg in {"origin", url} else arg for arg in command]
+            return process(command, cwd, **kwargs).replace("To " + str(self.bare), "To " + url)
+
+        def push(command, cwd):
+            self.assertEqual(command, ["git", "push", "origin", "main"])
+            return run(["git", "push", str(self.bare), "main"], cwd=cwd, check=False).returncode
+
+        own = {"github_user": "example-org", "own_repositories": [self.config["public"]["repository"]]}
+        with patch.dict(publication.CONFIG, own), patch.object(public, "run", side_effect=transport), \
+                patch.object(publication, "process", side_effect=preflight), \
+                patch.object(publication.subprocess, "call", side_effect=push) as pushes, \
+                patch.object(publication, "gh_json", side_effect=AssertionError("no GitHub calls")):
+            yield pushes
+
+    def publish(self):
+        return public.publish(self.clone, root=self.source, config=self.config, rules=self.rules)
+
+    def test_real_publish_first_unchanged_and_changed_snapshots(self):
+        self.rules["generated"]["site/old.js"] = "const version = 1;\n"
+        with self.public_transport() as pushes:
+            first = self.publish()
+            self.assertTrue(first["ok"], first)
+            self.assertTrue(first["changed"])
+            self.assertTrue(first["pushed"])
+            self.assertEqual(self.git(self.bare, "rev-parse", "main"), first["commit"])
+            self.assertEqual(self.git(self.clone, "rev-list", "--count", "HEAD"), "1")
+            self.assertEqual(self.git(self.clone, "show", "-s", "--format=%an <%ae>"),
+                             self.config["git_name"] + " <" + self.config["git_email"] + ">")
+            self.assertIn(public.SNAPSHOT_MARKER, self.git(self.clone, "show", "-s", "--format=%B"))
+            self.assertEqual(pushes.call_count, 1)
+            unchanged = self.publish()
+            self.assertEqual(unchanged, {"ok": True, "changed": False, "commit": first["commit"],
+                                         "pushed": False, "findings": []})
+            self.assertEqual(pushes.call_count, 1)
+            self.write("factory/demo.py", "VALUE = 2\n")
+            del self.rules["generated"]["site/old.js"]
+            changed = self.publish()
+            self.assertTrue(changed["ok"], changed)
+            self.assertTrue(changed["changed"] and changed["pushed"])
+            self.assertEqual(pushes.call_count, 2)
+            self.assertNotEqual(changed["commit"], first["commit"])
+            self.assertEqual(self.git(self.clone, "rev-parse", "HEAD^"), first["commit"])
+            self.assertEqual(self.git(self.bare, "rev-parse", "main"), changed["commit"])
+            self.assertFalse((self.clone / "site/old.js").exists())
+            self.assertEqual(self.git(self.clone, "status", "--porcelain"), "")
+
+    def test_real_publish_fast_forwards_before_building_next_commit(self):
+        with self.public_transport():
+            first = self.publish()
+            self.assertTrue(first["ok"], first)
+            self.git(self.clone, "commit", "--allow-empty", "-m", public.SNAPSHOT_MARKER)
+            remote = self.git(self.clone, "rev-parse", "HEAD")
+            self.git(self.clone, "push", str(self.bare), "main")
+            self.git(self.clone, "reset", "--hard", first["commit"])
+            self.write("factory/demo.py", "VALUE = 3\n")
+            result = self.publish()
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(self.git(self.clone, "rev-parse", "HEAD^"), remote)
+
+    def test_real_publish_divergence_does_not_overwrite_or_push(self):
+        with self.public_transport() as pushes:
+            first = self.publish()
+            self.assertTrue(first["ok"], first)
+            self.git(self.clone, "commit", "--allow-empty", "-m", "Remote\n\n" + public.SNAPSHOT_MARKER)
+            remote = self.git(self.clone, "rev-parse", "HEAD")
+            self.git(self.clone, "push", str(self.bare), "main")
+            self.git(self.clone, "reset", "--hard", first["commit"])
+            self.git(self.clone, "commit", "--allow-empty", "-m", "Local\n\n" + public.SNAPSHOT_MARKER)
+            local = self.git(self.clone, "rev-parse", "HEAD")
+            result = self.publish()
+            self.assertFalse(result["ok"] or result["changed"] or result["pushed"], result)
+            self.assertIn("ff-only", result["findings"][0])
+            self.assertEqual(self.git(self.clone, "rev-parse", "HEAD"), local)
+            self.assertEqual(self.git(self.bare, "rev-parse", "main"), remote)
+            self.assertEqual(pushes.call_count, 1)
+
+    def test_real_publish_refuses_dirty_worktree_and_non_main_branch(self):
+        with self.public_transport() as pushes:
+            self.assertTrue(self.publish()["ok"])
+            for staged in (False, True):
+                (self.clone / "README.md").write_text("Unpublished changes\n")
+                if staged:
+                    self.git(self.clone, "add", "README.md")
+                result = self.publish()
+                self.assertFalse(result["ok"], result)
+                self.assertIn("clean worktree", result["findings"][0])
+                self.assertEqual((self.clone / "README.md").read_text(), "Unpublished changes\n")
+                self.git(self.clone, "reset", "--hard", "HEAD")
+            (self.clone / "untracked.txt").write_text("Keep this\n")
+            self.assertFalse(self.publish()["ok"])
+            (self.clone / "untracked.txt").unlink()
+            self.git(self.clone, "checkout", "-b", "preview")
+            self.assertIn("on main", self.publish()["findings"][0])
+            self.assertEqual(pushes.call_count, 1)
+
+    def test_real_publish_refuses_non_snapshot_local_and_fetched_history(self):
+        with self.public_transport() as pushes:
+            self.assertTrue(self.publish()["ok"])
+            base = self.git(self.clone, "rev-parse", "HEAD")
+            self.git(self.clone, "commit", "--allow-empty", "-m", "Ordinary commit")
+            self.assertIn("non-snapshot", self.publish()["findings"][0])
+            self.git(self.clone, "push", str(self.bare), "main")
+            self.git(self.clone, "reset", "--hard", base)
+            self.assertIn("non-snapshot", self.publish()["findings"][0])
+            self.assertEqual(self.git(self.clone, "rev-parse", "HEAD"), base)
+            self.assertEqual(pushes.call_count, 1)
+
+    def test_real_publish_requires_exact_https_fetch_and_push_destination(self):
+        with self.public_transport() as pushes:
+            url = self.git(self.clone, "remote", "get-url", "origin")
+            for wrong in (str(self.bare), "https://github.com/example-org/other.git",
+                          "ssh://github.com/example-org/software-factory.git"):
+                self.git(self.clone, "remote", "set-url", "origin", wrong)
+                self.assertIn("over HTTPS", self.publish()["findings"][0])
+            self.git(self.clone, "remote", "set-url", "origin", url)
+            self.git(self.clone, "remote", "set-url", "--push", "origin", str(self.bare))
+            self.assertIn("over HTTPS", self.publish()["findings"][0])
+            pushes.assert_not_called()
+
+    def test_real_publish_propagates_scanner_refusal_without_pushing(self):
+        with self.public_transport() as pushes, \
+                patch.object(publication, "check_push", return_value=["Synthetic scan finding"]):
+            result = self.publish()
+            self.assertFalse(result["ok"] or result["pushed"], result)
+            self.assertTrue(result["changed"])
+            self.assertIn("Synthetic scan finding", result["findings"][0])
+            pushes.assert_not_called()
+            self.assertEqual(self.git(self.bare, "rev-list", "--all"), "")
 
     def test_first_snapshot_is_a_root_not_private_history(self):
         self.assertTrue(self.export()["ok"])

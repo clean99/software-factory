@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "generated_at": "2026-11-20T09:44:15+00:00",
+  "generated_at": "2026-11-20T09:48:24+00:00",
   "links": {
     "repository": "https://github.com/clean99/software-factory",
     "readme": "https://github.com/clean99/software-factory#readme",
@@ -460,7 +460,7 @@
     "factory_test_count": {
       "label": "Factory test count",
       "group": "Factory health",
-      "value": 1551,
+      "value": 1566,
       "unit": "count",
       "status": "tracked",
       "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
@@ -475,7 +475,7 @@
     "factory_test_runtime": {
       "label": "Factory test runtime",
       "group": "Factory health",
-      "value": 173.811,
+      "value": 165.787,
       "unit": "seconds",
       "status": "tracked",
       "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
@@ -526,8 +526,8 @@
       "definition": "Non-merge commits touching factory, bin, schedule, hooks or tests whose subject begins fix, fixes or fixed. Counts commits, not distinct defects.",
       "source": "Local git history",
       "coverage": {
-        "covered": 157,
-        "total": 157
+        "covered": 158,
+        "total": 158
       },
       "reason": null,
       "note": "Only explicitly labeled repair commits; differently worded repairs are excluded."

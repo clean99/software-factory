@@ -27,8 +27,8 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from factory.core import shiftlock
-from factory.util import path_from_config
+from factory.core import privacy, shiftlock
+from factory.util import load_config, path_from_config, write_json
 
 HOME = pathlib.Path.home()
 SESSION_PATH = (f"{HOME}/.local/bin:{HOME}/.nvm/versions/node/v24.16.0/bin:{HOME}/.nvm/versions/node/v20.20.2/bin:"
@@ -309,6 +309,36 @@ def run_session(name, out, deadline):
     return status, attempts
 
 
+def refresh_public(out):
+    """Best-effort post-shift publication, independent of the session's retry loop."""
+    try:
+        clone = load_config(ROOT).get("public", {}).get("clone")
+        if not clone:
+            return {"ok": True, "skipped": "public.clone is not configured"}
+        clone = pathlib.Path(clone).expanduser()
+        if not clone.is_absolute():
+            clone = ROOT / clone
+        command = [str(ROOT / "bin/factory"), "public", "publish", "--clone", str(clone)]
+        reports = [out.parent / "suite.json", *out.parent.glob("*/suite.json")]
+        reports = [path for path in reports if path.is_file()]
+        if reports:
+            report = max(reports, key=lambda path: (path.stat().st_mtime_ns, str(path)))
+            command += ["--suite-report", str(report)]
+        process = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                 timeout=600, env={**os.environ, "PATH": SESSION_PATH, "GIT_TERMINAL_PROMPT": "0"})
+        if process.returncode:
+            raise ValueError(process.stderr or process.stdout or f"public publish exited {process.returncode}")
+        result = json.loads(process.stdout)
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise ValueError(process.stdout or "public publish returned no result")
+        return {key: privacy.redact(value) if isinstance(value, str) else value
+                for key in ("ok", "changed", "commit", "pushed") if (value := result.get(key)) is not None}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "public publish timed out after 600s"}
+    except Exception as error:
+        return {"ok": False, "error": privacy.redact(str(error))[:2000]}
+
+
 def run_shift(name, minutes):
     if not name or pathlib.Path(name).name != name or name in {".", ".."}:
         raise ValueError("shift name must be a directory name")
@@ -352,8 +382,10 @@ def run_shift(name, minutes):
             summary["github_access"] = access
         if stale:
             summary["stale_lease_released"] = stale
-        (out / "summary.json").write_text(json.dumps(summary, indent=1, ensure_ascii=False) + "\n")
+        write_json(out / "summary.json", summary)
         (out.parent / "latest.json").write_text(json.dumps({"name": name, "summary": str(out / "summary.json")}) + "\n")
+        summary["public_refresh"] = refresh_public(out)
+        write_json(out / "summary.json", summary)
         line = next((row for row in reversed(summary["final"].splitlines()) if "今日合入" in row), "")
         subprocess.run([str(ROOT / "bin" / "factory"), "notify", (line.strip() or f"shift {name}: {status}")[:160]],
                        capture_output=True, cwd=ROOT)

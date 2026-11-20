@@ -18,8 +18,10 @@ def load_config(root=None):
     if local.exists():
         override = json.loads(local.read_text())
         limits = {**cfg.get("limits", {}), **override.pop("limits", {})}
+        public = {**cfg.get("public", {}), **override.pop("public", {})}
         cfg.update(override)
         cfg["limits"] = limits
+        cfg["public"] = public
     return cfg
 
 

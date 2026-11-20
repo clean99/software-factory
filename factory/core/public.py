@@ -262,6 +262,98 @@ def validate_history(clone, rules, config):
                 raise ValueError("public snapshot history contains a file scan finding")
 
 
+def sync_tree(tree, checkout):
+    """Replace a dedicated snapshot checkout, retaining only its Git metadata."""
+    for path in checkout.iterdir():
+        if path.name == ".git":
+            continue
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    for path in tree.rglob("*"):
+        if path.is_file() or path.is_symlink():
+            name = path.relative_to(tree).as_posix()
+            text, executable = regular_file(tree, name)
+            write_file(checkout, name, text, executable)
+    git(checkout, "add", "--all")
+
+
+def snapshot_commit(checkout, config, *, allow_empty=False):
+    message = "Update public factory snapshot\n\n" + SNAPSHOT_MARKER
+    env = dict(git_environment(), GIT_AUTHOR_NAME=config["git_name"], GIT_AUTHOR_EMAIL=config["git_email"],
+               GIT_COMMITTER_NAME=config["git_name"], GIT_COMMITTER_EMAIL=config["git_email"])
+    git(checkout, "commit", *(["--allow-empty"] if allow_empty else []), "-m", message, env=env)
+    return message
+
+
+def validate_clone(clone, root, rules, config):
+    if clone == root or root in clone.parents or clone in root.parents:
+        raise ValueError("public clone must be separate from the private checkout")
+    if not (clone / ".git").is_dir() or (clone / ".git").is_symlink():
+        raise ValueError("public clone must be a normal non-bare Git clone")
+    if pathlib.Path(git(clone, "rev-parse", "--show-toplevel")).resolve() != clone:
+        raise ValueError("--clone must name the public clone root")
+    if git(clone, "symbolic-ref", "--quiet", "HEAD") != "refs/heads/main":
+        raise ValueError("public clone must be on main")
+    if git(clone, "status", "--porcelain", "--untracked-files=all", "--ignored"):
+        raise ValueError("public clone must have a clean worktree, including untracked and ignored files")
+    repository, _ = destinations(config)
+    url = f"https://github.com/{repository}"
+    for args in (("config", "--get-all", "remote.origin.url"),
+                 ("remote", "get-url", "--all", "origin"),
+                 ("remote", "get-url", "--push", "--all", "origin")):
+        if git(clone, *args) not in {url, url + ".git"}:
+            raise ValueError("origin must point only to public.repository over HTTPS for fetch and push")
+    validate_history(clone, rules, config)
+
+
+def publish(clone, *, root=ROOT, config=None, rules=None, records_root=None, suite_report=None):
+    """Refresh the persistent snapshot clone and publish only through the scanned wrapper."""
+    config = CONFIG if config is None else config
+    rules = policy() if rules is None else rules
+    result = {"ok": False, "changed": False, "commit": None, "pushed": False, "findings": []}
+    try:
+        if not clone:
+            raise ValueError("public publish requires --clone or public.clone in local config")
+        clone = pathlib.Path(clone).expanduser().resolve()
+        root = pathlib.Path(root).resolve()
+        validate_clone(clone, root, rules, config)
+        with tempfile.TemporaryDirectory(prefix="factory-public-export-") as temporary:
+            tree = pathlib.Path(temporary).resolve() / "tree"
+            export = build(tree, root=root, config=config, rules=rules,
+                           records_root=records_root, suite_report=suite_report)
+            if not export["ok"]:
+                result["findings"] = export["findings"]
+                return result
+            git(clone, "fetch", "--prune", "--no-tags", "origin", "+refs/heads/*:refs/remotes/origin/*")
+            validate_history(clone, rules, config)
+            remote = git(clone, "for-each-ref", "--format=%(refname)", "refs/remotes/origin")
+            if "refs/remotes/origin/main" in remote.splitlines():
+                git(clone, "merge", "--ff-only", "refs/remotes/origin/main")
+            elif remote:
+                raise ValueError("nonempty public destination has no main branch")
+            head = git(clone, "for-each-ref", "--format=%(objectname)", "refs/heads/main")
+            result["commit"] = head or None
+            sync_tree(tree, clone)
+            if head and git(clone, "write-tree") == git(clone, "rev-parse", "HEAD^{tree}"):
+                result["ok"] = True
+                return result
+            result["changed"] = True
+            snapshot_commit(clone, config)
+            result["commit"] = git(clone, "rev-parse", "HEAD")
+            validate_history(clone, rules, config)
+            pushed = run([str(ROOT / "bin/factory"), "push", "-C", str(clone), "--", "origin", "main"],
+                         check=False, env=git_environment())
+            if pushed.returncode:
+                result["findings"] = [privacy.redact(pushed.stderr or pushed.stdout or "scanned push failed")]
+            else:
+                result.update(ok=True, pushed=True)
+    except (ValueError, OSError, CommandError) as error:
+        result["findings"] = [privacy.redact(str(error))]
+    return result
+
+
 def snapshot_plan(tree, *, clone=None, config=None, rules=None):
     """Create a disposable local commit; never fetch GitHub, push, or change the source clone."""
     config = CONFIG if config is None else config
@@ -292,23 +384,8 @@ def snapshot_plan(tree, *, clone=None, config=None, rules=None):
             git(checkout, "checkout", "-B", "main", parent)
         else:
             git(checkout, "checkout", "--orphan", "main")
-        for path in checkout.iterdir():
-            if path.name == ".git":
-                continue
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-        for path in pathlib.Path(tree).rglob("*"):
-            if path.is_file() or path.is_symlink():
-                name = path.relative_to(tree).as_posix()
-                text, executable = regular_file(pathlib.Path(tree), name)
-                write_file(checkout, name, text, executable)
-        git(checkout, "add", "--all")
-        message = "Update public factory snapshot\n\n" + SNAPSHOT_MARKER
-        env = dict(git_environment(), GIT_AUTHOR_NAME=config["git_name"], GIT_AUTHOR_EMAIL=config["git_email"],
-                   GIT_COMMITTER_NAME=config["git_name"], GIT_COMMITTER_EMAIL=config["git_email"])
-        git(checkout, "commit", "--allow-empty", "-m", message, env=env)
+        sync_tree(tree, checkout)
+        message = snapshot_commit(checkout, config, allow_empty=True)
         validate_history(checkout, rules, config)
         head = git(checkout, "rev-parse", "HEAD")
         refspec = "HEAD:refs/heads/main"
@@ -333,22 +410,23 @@ def snapshot_plan(tree, *, clone=None, config=None, rules=None):
 
 def cmd_public(args):
     try:
+        options = {key: getattr(args, key) for key in ("records_root", "suite_report") if getattr(args, key, None)}
         if args.action == "export":
-            options = {key: getattr(args, key) for key in ("records_root", "suite_report") if getattr(args, key, None)}
             result = build(args.out, **options)
         else:
             expected, _ = destinations(CONFIG)
             if args.repo and args.repo != expected:
                 raise ValueError("--repo must match public.repository in factory.config.json")
-            if not args.dry_run:
-                raise ValueError("public publish is design/dry-run only; pass --dry-run (no GitHub writes)")
-            with tempfile.TemporaryDirectory(prefix="factory-public-export-") as temporary:
-                tree = pathlib.Path(temporary).resolve() / "tree"
-                result = build(tree)
-                if result["ok"]:
-                    export = result
-                    result = snapshot_plan(tree, clone=args.clone)
-                    result["export"] = export
+            if args.dry_run:
+                with tempfile.TemporaryDirectory(prefix="factory-public-export-") as temporary:
+                    tree = pathlib.Path(temporary).resolve() / "tree"
+                    result = build(tree, **options)
+                    if result["ok"]:
+                        export = result
+                        result = snapshot_plan(tree, clone=args.clone)
+                        result["export"] = export
+            else:
+                result = publish(args.clone or CONFIG.get("public", {}).get("clone"), **options)
         print(json.dumps(result, indent=2))
         return 0 if result["ok"] else 1
     except (ValueError, OSError, CommandError) as error:
@@ -356,15 +434,17 @@ def cmd_public(args):
 
 
 def register(sub):
-    command = sub.add_parser("public", help="scanned public export and offline snapshot publication plan")
+    command = sub.add_parser("public", help="scanned public export and snapshot publication")
     actions = command.add_subparsers(dest="action", required=True)
     export = actions.add_parser("export", help="write a new, scanned allowlist-only public tree")
     export.add_argument("--out", type=pathlib.Path, required=True)
     export.add_argument("--records-root", type=pathlib.Path, help="read metrics records from another checkout without updating it")
     export.add_argument("--suite-report", type=pathlib.Path, help="full-suite JSON for the exported metrics site")
     export.set_defaults(fn=cmd_public)
-    publish = actions.add_parser("publish", help="design/dry-run only: prepare a disposable snapshot commit")
+    publish = actions.add_parser("publish", help="refresh a public snapshot clone through the scanned push wrapper")
     publish.add_argument("--repo", help="must equal public.repository")
-    publish.add_argument("--clone", type=pathlib.Path, help="optional local public snapshot clone or bare repository")
-    publish.add_argument("--dry-run", action="store_true", help="required; no network, pushes or source-clone changes")
+    publish.add_argument("--clone", type=pathlib.Path, help="public clone; defaults to public.clone for a real publication")
+    publish.add_argument("--dry-run", action="store_true", help="offline disposable plan; no pushes or source-clone changes")
+    publish.add_argument("--records-root", type=pathlib.Path, help="read metrics records from another checkout")
+    publish.add_argument("--suite-report", type=pathlib.Path, help="reuse a full-suite JSON report for the metrics site")
     publish.set_defaults(fn=cmd_public)

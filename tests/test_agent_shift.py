@@ -41,6 +41,7 @@ class ShiftLease(unittest.TestCase):
         self.sleep = Mock()
         for mocker in (patch.object(shiftlock, "ROOT", self.root), patch.object(agent_shift, "ROOT", self.root),
                        patch.object(agent_shift, "logs_dir", return_value=self.logs),
+                       patch.object(agent_shift, "load_config", return_value={"public": {}}),
                        patch.object(agent_shift.subprocess, "Popen", self.popen),
                        patch.object(agent_shift.subprocess, "run"), patch.object(agent_shift.time, "sleep", self.sleep),
                        patch.object(agent_shift, "wait_for_github", return_value={"ok": True}),
@@ -361,6 +362,34 @@ class ShiftLease(unittest.TestCase):
             fcntl.flock(runner, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.assertEqual(summary, self.saved_summary())
 
+    def test_public_refresh_is_recorded_after_summary_without_retrying_shift(self):
+        for fails in (False, True):
+            with self.subTest(fails=fails):
+                refreshed = {"ok": True, "changed": True, "commit": "a" * 40, "pushed": True}
+                def run(command, **kwargs):
+                    if "publish" in command:
+                        self.assertEqual(self.saved_summary()["status"], "exited 0")
+                        self.assertNotIn("public_refresh", self.saved_summary())
+                        if fails:
+                            raise OSError("Synthetic refresh failure")
+                        return Mock(returncode=0, stdout=json.dumps(refreshed))
+                    return Mock(returncode=0)
+
+                self.watch.reset_mock()
+                with patch.object(agent_shift, "load_config", return_value={"public": {"clone": "public-clone"}}), \
+                        patch.object(agent_shift.subprocess, "run", side_effect=run) as commands:
+                    summary = agent_shift.run_shift(self.name, 240)
+                self.assertEqual(summary["status"], "exited 0")
+                self.assertEqual(summary["attempts"], [0])
+                self.assertEqual(summary, self.saved_summary())
+                if fails:
+                    self.assertEqual(summary["public_refresh"], {"ok": False, "error": "Synthetic refresh failure"})
+                else:
+                    self.assertEqual(summary["public_refresh"], refreshed)
+                self.assertEqual(sum("publish" in call.args[0] for call in commands.call_args_list), 1)
+                self.watch.assert_called_once()
+                self.sleep.assert_not_called()
+
     def test_duplicate_runner_does_not_overwrite_live_records(self):
         marker = self.runner_record(self.name)
         saved = marker.parent / "summary.json"
@@ -371,6 +400,70 @@ class ShiftLease(unittest.TestCase):
                 agent_shift.run_shift(self.name, 240)
         self.assertEqual(saved.read_text(), "previous summary\n")
         self.popen.assert_not_called()
+
+
+class PublicRefresh(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = pathlib.Path(temporary.name)
+        self.out = self.root / "shift-logs" / "current"
+        self.out.mkdir(parents=True)
+        self.config = {"public": {"clone": "public-clone"}}
+        self.result = {"ok": True, "changed": False, "commit": "a" * 40, "pushed": False}
+        self.run = Mock(return_value=Mock(returncode=0, stdout=json.dumps(self.result)))
+        for mocker in (patch.object(agent_shift, "ROOT", self.root),
+                       patch.object(agent_shift, "load_config", return_value=self.config),
+                       patch.object(agent_shift.subprocess, "run", self.run)):
+            mocker.start()
+            self.addCleanup(mocker.stop)
+
+    def test_unconfigured_clone_skips_without_subprocess(self):
+        self.config["public"].clear()
+        self.assertIn("skipped", agent_shift.refresh_public(self.out))
+        self.run.assert_not_called()
+
+    def test_command_without_report_is_bounded_and_never_runs_suite(self):
+        self.assertEqual(agent_shift.refresh_public(self.out), self.result)
+        self.run.assert_called_once()
+        self.assertEqual(self.run.call_args.args[0], [str(self.root / "bin/factory"), "public", "publish",
+                                                    "--clone", str(self.root / "public-clone")])
+        self.assertEqual(self.run.call_args.kwargs["timeout"], 600)
+        self.assertEqual(self.run.call_args.kwargs["cwd"], self.root)
+        self.assertEqual(self.run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_latest_existing_suite_report_is_reused(self):
+        previous = self.out.parent / "previous"
+        previous.mkdir()
+        reports = [self.out.parent / "suite.json", previous / "suite.json", self.out / "suite.json"]
+        for index, path in enumerate(reports):
+            path.write_text('{"success": true}')
+            os.utime(path, (index + 1, index + 1))
+        for expected in reversed(reports):
+            agent_shift.refresh_public(self.out)
+            self.assertEqual(self.run.call_args.args[0][-2:], ["--suite-report", str(expected)])
+            expected.unlink()
+
+    def test_failure_timeout_malformed_output_and_config_errors_never_raise(self):
+        for response in (Mock(returncode=2, stderr="Rejected", stdout=""),
+                         Mock(returncode=0, stdout="not json"), Mock(returncode=0, stdout="[]"),
+                         Mock(returncode=0, stdout='{"ok": false}')):
+            self.run.return_value = response
+            self.assertFalse(agent_shift.refresh_public(self.out)["ok"])
+        for error in (OSError("Not executable"), RuntimeError("Unexpected failure"),
+                      agent_shift.subprocess.TimeoutExpired("publish", 600)):
+            self.run.side_effect = error
+            result = agent_shift.refresh_public(self.out)
+            self.assertFalse(result["ok"])
+            self.assertTrue(result["error"])
+        with patch.object(agent_shift, "load_config", side_effect=ValueError("Invalid config")):
+            self.assertEqual(agent_shift.refresh_public(self.out), {"ok": False, "error": "Invalid config"})
+
+    def test_failure_output_is_redacted_before_recording(self):
+        with patch.dict(agent_shift.privacy.CONFIG, {"private_terms": ["synthetic-private-marker"]}):
+            self.run.return_value = Mock(returncode=2, stdout="", stderr="Failed: synthetic-private-marker")
+            result = agent_shift.refresh_public(self.out)
+        self.assertEqual(result, {"ok": False, "error": "Failed: [redacted]"})
 
 
 class GitHubPreflight(unittest.TestCase):
