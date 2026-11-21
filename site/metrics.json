@@ -1,6 +1,6 @@
 {
   "schema_version": 4,
-  "generated_at": "2026-11-21T11:28:42+00:00",
+  "generated_at": "2026-11-21T12:06:47+00:00",
   "activity": {
     "zone": "Asia/Singapore",
     "as_of": "2026-11-21T11:27:52+00:00",
@@ -712,7 +712,7 @@
     "factory_test_runtime": {
       "label": "Factory test runtime",
       "group": "Factory health",
-      "value": 238.689,
+      "value": 209.628,
       "unit": "seconds",
       "status": "tracked",
       "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
@@ -763,8 +763,8 @@
       "definition": "Non-merge commits touching factory, bin, schedule, hooks or tests whose subject begins fix, fixes or fixed. Counts commits, not distinct defects.",
       "source": "Local git history",
       "coverage": {
-        "covered": 161,
-        "total": 161
+        "covered": 162,
+        "total": 162
       },
       "reason": null,
       "note": "Only explicitly labeled repair commits; differently worded repairs are excluded."

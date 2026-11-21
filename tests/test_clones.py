@@ -1,5 +1,7 @@
 import contextlib
+import datetime as dt
 import io
+import itertools
 import json
 import os
 import pathlib
@@ -45,6 +47,10 @@ class Clones(unittest.TestCase):
         self.use(patch.object(util, "ROOT", self.root))
         self.use(patch.object(clean, "ROOT", self.root))
         self.use(patch.object(util, "gh_json", side_effect=AssertionError("network not allowed")))
+        # Bundle names carry a one-second timestamp. Give each archive its own second so that a fast machine
+        # releasing the same checkout twice within one second does not trip the collision guard.
+        ticks, start = itertools.count(), util.now()
+        self.use(patch.object(clones, "now", side_effect=lambda: start + dt.timedelta(seconds=next(ticks))))
         write_json(self.root / "ledger.json", [])
         for repo in (self.upstream, self.fork):
             self.command("git", "init", "--bare", "-b", "main", str(repo))

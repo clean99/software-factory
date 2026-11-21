@@ -2,6 +2,7 @@
 import datetime as dt
 import pathlib
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -223,6 +224,13 @@ class Profile(unittest.TestCase):
             'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': []})
         mocker.start()
         self.addCleanup(mocker.stop)
+        # The header reads pr-history.json and pr-outcomes.json beside the ledger; point it at an empty
+        # directory so the rows passed by each test are the only input, not the repository's saved history.
+        records = tempfile.TemporaryDirectory()
+        self.addCleanup(records.cleanup)
+        ledger = patch.dict(CONFIG, ledger_file=str(pathlib.Path(records.name) / "prs.json"))
+        ledger.start()
+        self.addCleanup(ledger.stop)
 
     def test_header_uses_config_deduplicates_merges_and_preserves_groups(self):
         rows = [{"repo": "upstream/parser", "number": 7, "status": "merged",
