@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="@@CSP@@">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2315202b'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23ff7a1a'/%3E%3C/svg%3E">
+<title>Status board · Software Factory</title>
+<meta name="description" content="Every pull request the factory opened, what its maintainers did with it, and the recorded reason for each one that was not merged without rework.">
+<style>
+@@BASE_CSS@@
+
+/* the detail sheet: one cohort, two rates, where the rest went, and every row behind the numbers */
+main{padding-bottom:1rem}
+.hero{padding-top:clamp(1.6rem,3.6vw,2.8rem)}
+.eyebrow{margin:0 0 .9rem;font:500 .72rem/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.eyebrow b{color:var(--flow);font-weight:600}
+h1{margin:0;font:800 clamp(2.3rem,6.4vw,4.6rem)/.92 var(--display);letter-spacing:.004em;text-transform:uppercase;max-width:14em}
+h2{font-size:clamp(1.7rem,3.8vw,2.6rem)}
+.lead{margin:1.1rem 0 0;max-width:46em;font-size:1.12rem;line-height:1.5}
+.asof{margin:.9rem 0 0;font:500 .72rem/1.6 var(--mono);color:var(--dim)}
+.sec{padding-top:clamp(2.4rem,5.4vw,4rem)}
+p{max-width:48em}
+.sheet,.asof,.stale{max-width:none}
+.small{margin:.7rem 0 0;font-size:.93rem;line-height:1.5;color:var(--dim)}
+.panel{background:var(--panel);border:1.5px solid var(--ink)}
+.outcome{margin-top:1.4rem;padding:1.3rem 1.3rem 1.2rem;display:grid;gap:1.3rem}
+.rates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.4rem 2.5rem}
+.rate .label{display:block;font:600 .66rem/1.5 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.rate strong{display:block;font:800 clamp(3.6rem,8vw,5.4rem)/.86 var(--display);letter-spacing:.005em;font-variant-numeric:tabular-nums;margin:.3rem 0 .45rem}
+.rate:first-child strong{color:var(--merged)}
+.rate .small{display:block;margin:0;font:500 .7rem/1.5 var(--mono)}
+.rate .control{display:inline-block;margin-top:.55rem;padding:.2rem .5rem;border:1px solid var(--rule);font:500 .66rem/1.5 var(--mono);letter-spacing:.06em;color:var(--dim)}
+.meter{display:flex;height:30px;border:1.5px solid var(--ink)}
+.meter i{display:block;height:100%}
+.meter .a{background:var(--merged)}
+.meter .b{background:repeating-linear-gradient(135deg,var(--merged) 0 5px,transparent 5px 9px)}
+.meter .c{background:var(--stop)}
+.legend{display:flex;flex-wrap:wrap;gap:.4rem 1.6rem;margin-top:.75rem;font:500 .7rem/1.5 var(--mono);color:var(--dim)}
+.legend span{display:inline-flex;align-items:center;gap:.45rem}
+.legend b{font:800 1.25rem/1 var(--display);color:var(--ink);font-variant-numeric:tabular-nums}
+.swatch{width:16px;height:7px;border:1px solid var(--ink);flex:none}
+.swatch.a,.swatch.series-2{background:var(--merged)}
+.swatch.b{background:repeating-linear-gradient(135deg,var(--merged) 0 3px,transparent 3px 5px)}
+.swatch.c{background:var(--stop)}
+.swatch.d{background:transparent}
+.swatch.series-1{background:var(--flow)}
+.outcome .small a{white-space:nowrap}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.1rem;margin-top:1.4rem}
+.card{padding:1.15rem 1.15rem 1.05rem;display:grid;align-content:start;gap:.9rem;min-width:0}
+.card h3{font-size:1.4rem;line-height:1.05}
+.card h3 span{font:500 .78rem/1 var(--mono);letter-spacing:.04em;color:var(--dim);text-transform:none}
+.reasons{list-style:none;margin:0;padding:0;display:grid;gap:.85rem}
+.reasons li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.2rem .75rem;align-items:baseline;font-size:.95rem;line-height:1.4}
+.reasons .n{font:800 1.3rem/1 var(--display);font-variant-numeric:tabular-nums}
+.reasons .bar{grid-column:1/-1;height:5px;background:var(--belt);overflow:hidden}
+.reasons .bar i{display:block;height:100%;background:var(--stop)}
+.reasons .lever{grid-column:1/-1;font:400 .7rem/1.5 var(--mono);color:var(--dim)}
+.reasons .lever a{white-space:nowrap}
+.two{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:1.5rem 2.5rem;align-items:start}
+.chart{padding:1.1rem 1rem .4rem;position:relative;min-width:0}
+.chart svg{width:100%;height:auto;display:block;overflow:visible}
+.chart-legend{display:flex;gap:1.1rem;font:500 .68rem/1.5 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);min-height:1.4rem}
+.chart-legend span{display:inline-flex;align-items:center;gap:.45rem}
+.series-1{fill:var(--flow);stroke:var(--flow)}
+.series-2{fill:var(--merged);stroke:var(--merged)}
+.bar-mark{stroke:none}
+.grid-line{stroke:var(--hair);stroke-width:1;fill:none}
+.axis{fill:var(--dim);font:14px var(--mono);font-variant-numeric:tabular-nums}
+.hit-area{fill:transparent}
+.mark-group:focus-visible{outline:2px solid var(--flow);outline-offset:2px}
+.tooltip{position:absolute;left:1rem;right:1rem;bottom:2.8rem;padding:.5rem .6rem;background:var(--paper);border:1px solid var(--ink);font:500 .7rem/1.5 var(--mono);pointer-events:none}
+.table-scroll{max-width:100%;overflow-x:auto}
+.table-scroll:focus-visible{outline:2px solid var(--flow);outline-offset:2px}
+.table-scroll.panel{margin-top:1.4rem}
+table{width:100%;border-collapse:collapse;font-size:.92rem;line-height:1.45;font-variant-numeric:tabular-nums}
+th{font:600 .64rem/1.4 var(--mono);text-transform:uppercase;letter-spacing:.12em;text-align:left;color:var(--dim);border-bottom:1.5px solid var(--ink);padding:.65rem .75rem;white-space:nowrap}
+td{padding:.7rem .75rem;vertical-align:top;border-bottom:1px solid var(--hair)}
+tbody tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right}
+td.num{font-family:var(--mono);font-size:.82rem}
+td.date{white-space:nowrap;font:800 1.02rem/1.35 var(--display);letter-spacing:.03em}
+.log td:nth-child(2),.log td:nth-child(3){width:34%}
+.log td:last-child{font:500 .7rem/1.5 var(--mono);color:var(--dim)}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:1.4rem;border:1.5px solid var(--ink);background:var(--panel)}
+.fact{padding:1rem 1.1rem 1.05rem;min-width:0}
+.fact + .fact{border-left:1px solid var(--hair)}
+.fact .small{display:block;margin:0;font:500 .66rem/1.5 var(--mono);color:var(--dim)}
+.fact .small:first-child{letter-spacing:.1em;text-transform:uppercase}
+.fact strong{display:block;font:800 2.5rem/.95 var(--display);letter-spacing:.01em;margin:.35rem 0 .4rem;font-variant-numeric:tabular-nums}
+.plain{margin:.9rem 0 0;padding-left:1.15rem;max-width:50em;font-size:.95rem;line-height:1.5;color:var(--dim)}
+.plain li + li{margin-top:.4rem}
+.sub-h{margin-top:1.8rem;font-size:1.25rem}
+details{border-top:1px solid var(--rule);margin-top:0}
+.fold{margin-top:1.4rem}
+.fold details:last-of-type,.chart details:last-of-type{border-bottom:1px solid var(--rule)}
+.chart details:last-of-type{border-bottom:0}
+summary{cursor:pointer;padding:.85rem 0;min-height:1.6rem;font:800 1.15rem/1.2 var(--display);letter-spacing:.03em;text-transform:uppercase}
+summary span{font:500 .7rem/1.4 var(--mono);letter-spacing:.02em;text-transform:none;color:var(--dim)}
+.metrics-section{min-width:0}
+.metrics-section h3{font-size:1.15rem;margin:1.2rem 0 .3rem}
+.metrics-section td:nth-child(1){width:19%;min-width:145px}
+.metrics-section td:nth-child(2){width:17%;min-width:125px}
+.metrics-section td:nth-child(3){width:43%;min-width:240px}
+.metrics-section td:nth-child(4){width:21%;min-width:140px}
+.metric-name{font-weight:600}
+.status{display:block;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font:500 .64rem var(--mono);margin-top:.45rem}
+.coverage{font-family:var(--mono);font-size:.8rem;display:block;margin-bottom:.4rem}
+.detail-note{font-size:.84rem;color:var(--dim);margin:.4rem 0 0}
+.empty{font:500 .74rem/1.6 var(--mono);color:var(--dim)}
+@media (max-width:900px){.cards{grid-template-columns:1fr}.two{grid-template-columns:1fr}.facts{grid-template-columns:repeat(2,minmax(0,1fr))}.fact:nth-child(3){border-left:0}.fact:nth-child(n+3){border-top:1px solid var(--hair)}}
+@media (max-width:520px){.rates{grid-template-columns:1fr}.outcome{padding:1.05rem}.axis{font-size:18px}}
+</style>
+<script>@@SCRIPT@@</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="wrap top">
+  <a class="brand" href="./"><i aria-hidden="true"></i>Software Factory</a>
+  <nav aria-label="Main">
+    <a class="sec-link" href="#outcome-title">Outcome</a>
+    <a class="sec-link" href="#loss-title">Reasons</a>
+    <a class="sec-link" href="#daily-title">By day</a>
+    <a class="sec-link" href="#log-title">Changes</a>
+    <a class="sec-link" href="#method-title">Check it</a>
+    <a class="out" href="./">The factory</a>
+    <a class="out" href="@@REPOSITORY@@">GitHub</a>
+    <button class="theme" type="button" id="theme" aria-label="Colour theme: follows system. Activate to change.">Auto</button>
+  </nav>
+</header>
+<main id="main">
+
+<section class="wrap hero">
+<p class="eyebrow"><b>Software Factory</b> · status board</p>
+<h1>What the factory opened, and what maintainers did with it</h1>
+<p class="lead">An automated pipeline opens pull requests in other people's open-source projects. This page counts all of them, including the ones that were closed, left unanswered or reworked.</p>
+<p class="asof">Snapshot <time id="generated" datetime="@@UPDATED@@">@@SNAPSHOT@@</time> · @@TOTAL@@ pull requests since @@FIRST_OPENED@@ · no live requests, no tracking · <a href="./">how the line works</a></p>
+<p class="stale" id="stale" role="status"></p>
+</section>
+
+<section class="wrap sec" aria-labelledby="outcome-title">
+<p class="sheet"><b>Board 01</b><span>Outcome</span></p>
+<h2 id="outcome-title">Outcome of everything old enough to judge</h2>
+<p class="small">@@COHORT_N@@ pull requests were opened at least @@COHORT_MATURITY_DAYS@@ days before this snapshot, between @@COHORT_FIRST@@ and @@COHORT_LAST@@. The 14-day cutoff is the factory's reporting rule, not a deadline for maintainers. Newer pull requests (@@COHORT_EXCLUDED_RECENT@@) are left out until they pass it, and a later decision on an open one still changes these numbers.</p>
+<div class="panel outcome">
+<div class="rates">
+<div class="rate"><span class="label">Merge rate</span><strong>@@MERGE_RATE@@</strong><span class="small">@@MERGE_DETAIL@@</span><span class="control">maintainers decide · selection moves it</span></div>
+<div class="rate"><span class="label">Merged without rework</span><strong>@@CLEAN_RATE@@</strong><span class="small">@@CLEAN_DETAIL@@</span><span class="control">the factory's build and review move it</span></div>
+</div>
+<div>
+<div class="meter" role="img" aria-label="@@METER_LABEL@@"><i class="a" style="width:@@CLEAN_WIDTH@@%"></i><i class="b" style="width:@@REWORK_WIDTH@@%"></i><i class="c" style="width:@@CLOSED_WIDTH@@%"></i></div>
+<div class="legend"><span><i class="swatch a" aria-hidden="true"></i><b>@@COHORT_MERGED_NO_REWORK@@</b> merged without rework</span><span><i class="swatch b" aria-hidden="true"></i><b>@@COHORT_MERGED_REWORKED@@</b> merged after rework</span><span><i class="swatch c" aria-hidden="true"></i><b>@@COHORT_CLOSED@@</b> closed without merge</span><span><i class="swatch d" aria-hidden="true"></i><b>@@COHORT_OPEN@@</b> still open</span></div>
+<p class="small">Check on GitHub: @@SEARCHES@@</p>
+</div>
+</div>
+</section>
+
+<section class="wrap sec" aria-labelledby="loss-title">
+<p class="sheet"><b>Board 02</b><span>Reasons</span></p>
+<h2 id="loss-title">Where the rest went</h2>
+<p class="small">Each pull request that was not merged without rework has one recorded reason. Most reasons name the factory stage that could have prevented it; a pull request in review, or closed without an explanation, names none.</p>
+<div class="cards">
+<div class="panel card"><h3>Merged after rework <span>· @@COHORT_MERGED_REWORKED@@</span></h3>
+<ul class="reasons">@@MERGED_REWORKED_REASONS@@</ul>
+@@NEUTRAL_EDITS@@</div>
+<div class="panel card"><h3>Closed without merge <span>· @@COHORT_CLOSED@@</span></h3>
+<ul class="reasons">@@CLOSED_REASONS@@</ul></div>
+<div class="panel card"><h3>Still open after 14 days <span>· @@COHORT_OPEN@@</span></h3>
+<ul class="reasons">@@OPEN_REASONS@@</ul></div>
+</div>
+</section>
+
+<section class="wrap sec" aria-labelledby="week-title">
+<p class="sheet"><b>Board 03</b><span>Output</span></p>
+<div class="two">
+<div>
+<h2 id="week-title">Output by week</h2>
+<p class="small">Pull requests opened and merged in each week, by the date of the event. Counts are evidence of what happened.</p>
+@@LAST_OPENED@@
+</div>
+<div class="panel chart">
+@@CHART@@
+<details><summary>Weekly values <span>· opened and merged by week of the event</span></summary><div class="table-scroll" tabindex="0" role="region" aria-label="Weekly values"><table><thead><tr><th scope="col">Week (UTC)</th><th scope="col" class="num">Opened</th><th scope="col" class="num">Merged</th></tr></thead><tbody>
+@@WEEKLY_ROWS@@
+</tbody></table></div></details>
+<details><summary>Outcome by week opened <span>· where each week's pull requests stand now</span></summary><div class="table-scroll" tabindex="0" role="region" aria-label="Outcome by week opened"><table><thead><tr><th scope="col">Week (UTC)</th><th scope="col" class="num">Opened</th><th scope="col" class="num">Merged</th><th scope="col" class="num">No rework</th><th scope="col" class="num">Closed</th><th scope="col" class="num">Open</th></tr></thead><tbody>
+@@WEEKLY_OUTCOMES@@
+</tbody></table></div></details>
+</div>
+</div>
+</section>
+
+<section class="wrap sec" aria-labelledby="daily-title">
+<p class="sheet"><b>Board 04</b><span>By day</span></p>
+<h2 id="daily-title">Each of the last @@WINDOW_DAYS@@ days</h2>
+<p class="small">Each event is dated by when it happened and shown by Asia/Singapore date; the cohort above uses UTC dates. A day with zeros is a valid day. @@TODAY@@</p>
+<div class="panel table-scroll" tabindex="0" role="region" aria-label="Daily counts"><table><thead><tr><th scope="col">Date</th><th scope="col" class="num">Opened</th><th scope="col" class="num">Merged</th><th scope="col" class="num">Closed without merge</th></tr></thead><tbody>
+@@DAILY_ROWS@@
+</tbody></table></div>
+</section>
+
+<section class="wrap sec" aria-labelledby="log-title">
+<p class="sheet"><b>Board 05</b><span>Changes</span></p>
+<h2 id="log-title">What changed because something went wrong</h2>
+<p class="small">Each row is a failure a maintainer or the factory's own review exposed, the change it led to, and the number it should move.</p>
+<div class="panel table-scroll" tabindex="0" role="region" aria-label="Improvement log"><table class="log"><thead><tr><th scope="col">Date</th><th scope="col">What happened</th><th scope="col">What changed in the factory</th><th scope="col">Should move</th></tr></thead><tbody>
+@@IMPROVEMENT_ROWS@@
+</tbody></table></div>
+</section>
+
+<section class="wrap sec" aria-labelledby="repo-title">
+<p class="sheet"><b>Board 06</b><span>Projects</span></p>
+<h2 id="repo-title">By project</h2>
+<p class="small">Projects with at least five pull requests in the cohort. A pooled rate hides differences between projects, so the split is shown.</p>
+<div class="panel table-scroll" tabindex="0" role="region" aria-label="Outcome by project"><table><thead><tr><th scope="col">Project</th><th scope="col" class="num">Opened</th><th scope="col" class="num">Merged</th><th scope="col" class="num">No rework</th><th scope="col" class="num">Closed</th><th scope="col" class="num">Open</th></tr></thead><tbody>
+@@REPOSITORY_ROWS@@
+</tbody></table></div>
+</section>
+
+<section class="wrap sec" aria-labelledby="inside-title">
+<p class="sheet"><b>Board 07</b><span>Process</span></p>
+<h2 id="inside-title">Inside the factory</h2>
+<p class="small">Process numbers the factory controls directly. They explain the outcomes above. They are not goals.</p>
+<div class="facts">
+<div class="fact"><span class="small">Candidates recorded</span><strong>@@CANDIDATES_VALUE@@</strong><span class="small">@@CANDIDATES_DETAIL@@</span></div>
+<div class="fact"><span class="small">Sent back by independent review</span><strong>@@REVIEW_VALUE@@</strong><span class="small">@@REVIEW_DETAIL@@</span></div>
+<div class="fact"><span class="small">Automated sessions with a clean exit</span><strong>@@SHIFTS_VALUE@@</strong><span class="small">@@SHIFTS_DETAIL@@</span></div>
+<div class="fact"><span class="small">Factory tests</span><strong>@@TESTS_VALUE@@</strong><span class="small">@@TESTS_DETAIL@@</span></div>
+</div>
+<h3 class="sub-h">Not measured</h3>
+<ul class="plain">
+<li>How long maintainers take to answer, approve or merge. That time is theirs, so it is not a factory number.</li>
+<li>Cost per pull request, in agent time or tokens. Worker sessions are not attributed to items yet.</li>
+<li>How often a person had to step in during a scheduled session. Sessions carry no intervention record yet.</li>
+<li>Reverts and regressions after a merge. Follow-up stops when a pull request merges.</li>
+</ul>
+</section>
+
+<section class="wrap sec" aria-labelledby="method-title">
+<p class="sheet"><b>Board 08</b><span>Method</span></p>
+<h2 id="method-title">How to check these numbers</h2>
+<ul class="plain">
+<li>The list of pull requests comes from the factory's ledger and is reconciled with <a href="@@LEDGER_SEARCH@@">GitHub's own search</a>. @@COMPARISON@@</li>
+<li>Closed, withdrawn and unanswered pull requests stay in the merge-rate denominator. A merge counts only when GitHub shows the pull request as merged. Merged without rework is a share of the merges.</li>
+<li>A change after opening is read from the pull request's commits, reviews and force-push events. Ordinary push times are not published by GitHub, so commit dates stand in for them.</li>
+<li>Rates are shown only for 20 pull requests or more. Intervals are 95% Wilson intervals and ignore clustering by project.</li>
+</ul>
+<div class="fold">
+<details><summary>Every pull request <span>· @@PULL_COUNT@@ rows with outcome and reason</span></summary><div class="table-scroll" tabindex="0" role="region" aria-label="Every pull request"><table><thead><tr><th scope="col">Pull request</th><th scope="col">Opened</th><th scope="col">Outcome</th><th scope="col">Reason</th></tr></thead><tbody>
+@@PULL_ROWS@@
+</tbody></table></div></details>
+<details><summary>All recorded measurements <span>· definitions, coverage and gaps</span></summary><p class="small">The complete metric table from the factory's records.</p>@@TABLES@@</details>
+</div>
+</section>
+
+</main>
+<footer class="wrap foot"><span>Software Factory · public snapshot · schema @@SCHEMA@@</span><a href="@@DEFINITIONS@@">Metric definitions</a><span>No live requests · no tracking · no private records</span></footer>
+<script id="metrics-data" type="application/json">@@DATA@@</script>
+</body>
+</html>

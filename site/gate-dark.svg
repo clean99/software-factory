@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" width="960" height="420" role="img" aria-label="The release gate on the structured path. Independent review and coordinator review are each bound to the head commit and the pull-request text. The approval record is bound to the exact head and the exact prepared text. The gate compares every binding with what is about to be pushed. When all match and the leak and privacy scans pass, the push and pull request go out. A stale binding, a rerun that exits differently or a scan finding refuses the push. A receipt is the CLI's signed record of one proof command.">
+<title>The release gate on the structured path. Independent review and coordinator review are each bound to the head commit and the pull-request text. The approval record is bound to the exact head and the exact prepared text. The gate compares every binding with what is about to be pushed. When all match and the leak and privacy scans pass, the push and pull request go out. A stale binding, a rerun that exits differently or a scan finding refuses the push. A receipt is the CLI's signed record of one proof command.</title>
+<style>.mono{font-family:ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace}.sans{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif}.lamp{animation:lamp 2.4s ease-in-out infinite}@keyframes lamp{0%,100%{opacity:.25}50%{opacity:1}}.belt{animation:belt .7s linear infinite}@keyframes belt{to{stroke-dashoffset:-16}}.still{display:none}@media (prefers-reduced-motion: reduce){.lamp,.belt{animation:none}.moving{display:none}.still{display:inline}}</style>
+<defs><pattern id="gate-grid-dark" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#161b22" stroke-width="1"/></pattern><marker id="gate-tip-dark" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8b949e"/></marker></defs>
+<rect x="0.5" y="0.5" width="959" height="419" rx="12" fill="#0d1117" stroke="#30363d"/>
+<rect x="1" y="1" width="958" height="418" rx="12" fill="url(#gate-grid-dark)"/>
+<text class="mono" x="28" y="36" font-size="12" font-weight="700" letter-spacing="1.6" fill="#e6edf3">SOFTWARE FACTORY</text>
+<text class="mono" x="176" y="36" font-size="12" letter-spacing="1.6" fill="#8b949e">/ THE GATE</text>
+<text class="mono" x="932" y="36" font-size="12" letter-spacing="1.2" fill="#8b949e" text-anchor="end">STRUCTURED PATH, SINCE 2026-11-10</text>
+<text class="mono" x="426.0" y="66" font-size="10" letter-spacing="1.2" fill="#8b949e" text-anchor="middle">BOUND TO</text>
+<path d="M278 118H574.0" stroke="#484f58" stroke-width="14" stroke-linecap="round" opacity=".22"/>
+<path class="belt" d="M278 118H574.0" stroke="#484f58" stroke-width="2" stroke-dasharray="6 10"/>
+<path d="M278 200H574.0" stroke="#484f58" stroke-width="14" stroke-linecap="round" opacity=".22"/>
+<path class="belt" d="M278 200H574.0" stroke="#484f58" stroke-width="2" stroke-dasharray="6 10"/>
+<path d="M278 282H574.0" stroke="#484f58" stroke-width="14" stroke-linecap="round" opacity=".22"/>
+<path class="belt" d="M278 282H574.0" stroke="#484f58" stroke-width="2" stroke-dasharray="6 10"/>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M278 118 L578.0 118" dur="2.5s" begin="-0.3s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="2.5s" begin="-0.3s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#ff8a3d;#ff8a3d" keyTimes="0;0.78;0.86;1" dur="2.5s" begin="-0.3s" repeatCount="indefinite"/></rect>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M278 118 L578.0 118" dur="2.5s" begin="-1.55s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="2.5s" begin="-1.55s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#ff8a3d;#ff8a3d" keyTimes="0;0.78;0.86;1" dur="2.5s" begin="-1.55s" repeatCount="indefinite"/></rect>
+<rect class="still" x="512.0" y="113" width="10" height="10" rx="3" fill="#ff8a3d"/>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M278 200 L578.0 200" dur="2.5s" begin="-0.85s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="2.5s" begin="-0.85s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#ff8a3d;#ff8a3d" keyTimes="0;0.78;0.86;1" dur="2.5s" begin="-0.85s" repeatCount="indefinite"/></rect>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M278 200 L578.0 200" dur="2.5s" begin="-2.1s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="2.5s" begin="-2.1s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#ff8a3d;#ff8a3d" keyTimes="0;0.78;0.86;1" dur="2.5s" begin="-2.1s" repeatCount="indefinite"/></rect>
+<rect class="still" x="512.0" y="195" width="10" height="10" rx="3" fill="#ff8a3d"/>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M278 282 L578.0 282" dur="2.5s" begin="-1.4s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="2.5s" begin="-1.4s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#ff8a3d;#ff8a3d" keyTimes="0;0.78;0.86;1" dur="2.5s" begin="-1.4s" repeatCount="indefinite"/></rect>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M278 282 L578.0 282" dur="2.5s" begin="-2.65s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="2.5s" begin="-2.65s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#ff8a3d;#ff8a3d" keyTimes="0;0.78;0.86;1" dur="2.5s" begin="-2.65s" repeatCount="indefinite"/></rect>
+<rect class="still" x="512.0" y="277" width="10" height="10" rx="3" fill="#ff8a3d"/>
+<path d="M626.0 200H664V150H700" fill="none" stroke="#484f58" stroke-width="2" marker-end="url(#gate-tip-dark)"/>
+<path d="M664 200V250H700" fill="none" stroke="#484f58" stroke-width="2" stroke-dasharray="2 5" marker-end="url(#gate-tip-dark)"/>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M626.0 200 L664 200 L664 150 L702 150" dur="1.05s" begin="-0.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="1.05s" begin="-0.2s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#58a6ff;#58a6ff" keyTimes="0;0.78;0.86;1" dur="1.05s" begin="-0.2s" repeatCount="indefinite"/></rect>
+<rect class="moving" x="-5.0" y="-5.0" width="10" height="10" rx="3" fill="#ff8a3d"><animateMotion path="M626.0 200 L664 200 L664 150 L702 150" dur="1.05s" begin="-0.72s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.04;0.94;1" dur="1.05s" begin="-0.72s" repeatCount="indefinite"/><animate attributeName="fill" values="#ff8a3d;#ff8a3d;#58a6ff;#58a6ff" keyTimes="0;0.78;0.86;1" dur="1.05s" begin="-0.72s" repeatCount="indefinite"/></rect>
+<rect class="still" x="659" y="145" width="10" height="10" rx="3" fill="#58a6ff"/>
+<rect x="364.3" y="107" width="123.39999999999999" height="22" rx="11" fill="#0d1117" stroke="#30363d"/>
+<text class="mono" x="426.0" y="121.5" font-size="10" letter-spacing="1" fill="#e6edf3" text-anchor="middle">HEAD + PR TEXT</text>
+<rect x="364.3" y="189" width="123.39999999999999" height="22" rx="11" fill="#0d1117" stroke="#30363d"/>
+<text class="mono" x="426.0" y="203.5" font-size="10" letter-spacing="1" fill="#e6edf3" text-anchor="middle">HEAD + PR TEXT</text>
+<rect x="332.35" y="271" width="187.29999999999998" height="22" rx="11" fill="#0d1117" stroke="#30363d"/>
+<text class="mono" x="426.0" y="285.5" font-size="10" letter-spacing="1" fill="#e6edf3" text-anchor="middle">EXACT HEAD + EXACT TEXT</text>
+<rect x="28" y="83.0" width="250" height="70" rx="8" fill="#161b22" fill-opacity=".94" stroke="#30363d" stroke-width="1.2"/>
+<path d="M36 83.0H270" stroke="#ff8a3d" stroke-width="2" opacity=".55"/>
+<text class="mono" x="42" y="108.0" font-size="12" font-weight="700" letter-spacing="1" fill="#e6edf3">INDEPENDENT REVIEW</text>
+<text class="sans" x="42" y="126.0" font-size="11" fill="#8b949e">one answer per risk class,</text>
+<text class="sans" x="42" y="141.0" font-size="11" fill="#8b949e">each citing a receipt</text>
+<rect x="28" y="165.0" width="250" height="70" rx="8" fill="#161b22" fill-opacity=".94" stroke="#30363d" stroke-width="1.2"/>
+<path d="M36 165.0H270" stroke="#ff8a3d" stroke-width="2" opacity=".55"/>
+<text class="mono" x="42" y="190.0" font-size="12" font-weight="700" letter-spacing="1" fill="#e6edf3">COORDINATOR REVIEW</text>
+<text class="sans" x="42" y="208.0" font-size="11" fill="#8b949e">reruns the proofs on this head,</text>
+<text class="sans" x="42" y="223.0" font-size="11" fill="#8b949e">adds its own counterexample</text>
+<rect x="28" y="247.0" width="250" height="70" rx="8" fill="#161b22" fill-opacity=".94" stroke="#30363d" stroke-width="1.2"/>
+<path d="M36 247.0H270" stroke="#ff8a3d" stroke-width="2" opacity=".55"/>
+<text class="mono" x="42" y="272.0" font-size="12" font-weight="700" letter-spacing="1" fill="#e6edf3">APPROVAL RECORD</text>
+<text class="sans" x="42" y="290.0" font-size="11" fill="#8b949e">the owner's standing approval,</text>
+<text class="sans" x="42" y="305.0" font-size="11" fill="#8b949e">recorded for this item</text>
+<rect x="704" y="115.0" width="228" height="70" rx="8" fill="#161b22" fill-opacity=".94" stroke="#30363d" stroke-width="1.2"/>
+<path d="M712 115.0H924" stroke="#58a6ff" stroke-width="2" opacity=".55"/>
+<text class="mono" x="718" y="140.0" font-size="12" font-weight="700" letter-spacing="1" fill="#e6edf3">PUSH + PULL REQUEST</text>
+<text class="sans" x="718" y="158.0" font-size="11" fill="#8b949e">every binding matches;</text>
+<text class="sans" x="718" y="173.0" font-size="11" fill="#8b949e">leak and privacy scans pass</text>
+<circle cx="916" cy="135.0" r="3.5" fill="#58a6ff"/>
+<rect x="704" y="215.0" width="228" height="70" rx="8" fill="#161b22" fill-opacity=".94" stroke="#30363d" stroke-width="1.2"/>
+<path d="M712 215.0H924" stroke="#6e7681" stroke-width="2" opacity=".55"/>
+<text class="mono" x="718" y="240.0" font-size="12" font-weight="700" letter-spacing="1" fill="#e6edf3">REFUSED</text>
+<text class="sans" x="718" y="258.0" font-size="11" fill="#8b949e">a stale binding, a rerun that exits</text>
+<text class="sans" x="718" y="273.0" font-size="11" fill="#8b949e">differently, or a scan finding</text>
+<circle cx="916" cy="235.0" r="3.5" fill="#6e7681"/>
+<text class="mono" x="600" y="66" font-size="12" font-weight="700" letter-spacing="1.4" fill="#e6edf3" text-anchor="middle">RELEASE GATE</text>
+<rect x="574.0" y="78" width="52" height="244" rx="10" fill="#161b22" fill-opacity=".96" stroke="#30363d" stroke-width="1.4"/>
+<path d="M582.0 78H618.0" stroke="#ff8a3d" stroke-width="2" opacity=".7"/>
+<path d="M600 92V308" stroke="#30363d" stroke-width="1" stroke-dasharray="2 4"/>
+<circle cx="600" cy="118" r="9" fill="#0d1117" stroke="#30363d"/>
+<circle class="lamp" cx="600" cy="118" r="4.5" fill="#ff8a3d" style="animation-delay:0.0s"/>
+<circle cx="600" cy="200" r="9" fill="#0d1117" stroke="#30363d"/>
+<circle class="lamp" cx="600" cy="200" r="4.5" fill="#ff8a3d" style="animation-delay:0.5s"/>
+<circle cx="600" cy="282" r="9" fill="#0d1117" stroke="#30363d"/>
+<circle class="lamp" cx="600" cy="282" r="4.5" fill="#ff8a3d" style="animation-delay:1.0s"/>
+<text class="sans" x="600" y="343" font-size="11" fill="#8b949e" text-anchor="middle">every binding is compared with what is about to be pushed</text>
+<path d="M28 362H932" stroke="#30363d" stroke-width="1"/>
+<text class="mono" x="28" y="384" font-size="12" fill="#e6edf3"><tspan font-weight="700">receipt</tspan><tspan fill="#8b949e"> = the CLI's signed record of one proof command: argv · exit status · output hash · commits</tspan></text>
+<text class="sans" x="28" y="404" font-size="11" fill="#8b949e">The gate checks bindings and scans. It does not judge whether a reviewer was right.</text>
+</svg>

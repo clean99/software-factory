@@ -13,6 +13,7 @@
       "test_disclosure",
       "test_metrics",
       "test_metrics_history",
+      "test_metrics_site",
       "test_followup_parallel",
       "test_next",
       "test_observation_recovery",

@@ -1,0 +1,34 @@
+{
+  "enabled": true,
+  "runtime": {
+    "path": "~/.local/bin:~/.nvm/versions/node/v24.16.0/bin:~/.nvm/versions/node/v20.20.2/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "python": "",
+    "claude": "~/.local/bin/claude",
+    "router": "~/.local/bin/factory-model-router",
+    "router_port": "8080",
+    "shell": "/bin/zsh",
+    "notify": "{checkout}/bin/factory",
+    "logs": ""
+  },
+  "kinds": {
+    "daily": {
+      "enabled": true,
+      "zone": "Asia/Singapore",
+      "time": "21:43",
+      "main_model": "opus",
+      "subagent_model": "sonnet",
+      "minutes": 240,
+      "grace_minutes": 90
+    },
+    "weekly": {
+      "enabled": true,
+      "zone": "Asia/Singapore",
+      "weekday": 6,
+      "time": "22:30",
+      "main_model": "opus",
+      "subagent_model": "sonnet",
+      "minutes": 180,
+      "grace_minutes": 480
+    }
+  }
+}

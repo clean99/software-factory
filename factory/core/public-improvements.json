@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "entries": [
+    {
+      "date": "2026-10-25",
+      "happened": "A project's automation closed a pull request because it referenced no existing issue.",
+      "links": [
+        {
+          "label": "pydantic-ai#11243",
+          "url": "https://github.com/pydantic/pydantic-ai/pull/11243"
+        }
+      ],
+      "change": "The policy scan reads a project's pull-request automation as well as its contributing guide, and the release gate checks a required issue reference before a pull request is opened.",
+      "moves": "Closed: process rule"
+    },
+    {
+      "date": "2026-10-25",
+      "happened": "Another contributor opened the same fix shortly before the factory did.",
+      "links": [
+        {
+          "label": "opencode#58944",
+          "url": "https://github.com/anomalyco/opencode/pull/58944"
+        }
+      ],
+      "change": "A fix is prepared before its issue is opened, and the pull request follows promptly, with a collision check after the push. Where a project wants discussion or a maintainer's answer first, the issue goes first and the factory waits. Since 2026-11-10, bug reports younger than 48 hours are left alone unless a maintainer invites a pull request.",
+      "moves": "Closed: someone else fixed it first"
+    },
+    {
+      "date": "2026-10-28",
+      "happened": "A fix patched the callers of a shared layer. The maintainer fixed the layer instead and kept the regression test.",
+      "links": [
+        {
+          "label": "assistant-ui#10160",
+          "url": "https://github.com/assistant-ui/assistant-ui/pull/10160"
+        }
+      ],
+      "change": "Review answers whether the change sits in the layer that owns the contract.",
+      "moves": "Closed: the maintainer fixed it another way"
+    },
+    {
+      "date": "2026-10-31",
+      "happened": "A fix was right, but its generated test matrix was not how the project tests. It was changed on request and then merged.",
+      "links": [
+        {
+          "label": "knip#2265",
+          "url": "https://github.com/webpro-nl/knip/pull/2265"
+        }
+      ],
+      "change": "Each project's conventions are written on a note for that project, its repository card, which the implementer receives with the task.",
+      "moves": "Merged after a change request"
+    },
+    {
+      "date": "2026-11-01",
+      "happened": "A maintainer closed a fix as a non-real issue: the input came from the factory probing the code, not from any project. Two later closures also cited the lack of a real-world case.",
+      "links": [
+        {
+          "label": "postcss#2182",
+          "url": "https://github.com/postcss/postcss/pull/2182"
+        },
+        {
+          "label": "anything-llm#6957",
+          "url": "https://github.com/Mintplex-Labs/anything-llm/pull/6957"
+        },
+        {
+          "label": "starlight#4314",
+          "url": "https://github.com/withastro/starlight/pull/4314"
+        }
+      ],
+      "change": "A candidate names who hits the problem, with a source, and a failure path needs a real report or captured output. Since 2026-11-10 a separate agent decides build, propose or drop before any code is written.",
+      "moves": "Closed: no real-world case shown"
+    },
+    {
+      "date": "2026-11-01",
+      "happened": "First pull requests to new projects were going unanswered. By 2026-11-20 twelve projects had received one pull request each and merged none, and eight of those were still open with no reply from a person.",
+      "links": [],
+      "change": "Before a first pull request, the factory samples whether outsiders' pull requests get a human review within three days, unless a maintainer invited the work. Silent projects are stopped and not pinged.",
+      "moves": "Still open: no reply from a person"
+    },
+    {
+      "date": "2026-11-11",
+      "happened": "On a fix that was never published, the author's checks passed and two rounds of independent review each found a different regression. The record is private; the link is the issue the fix was for.",
+      "links": [
+        {
+          "label": "rollup issue 6369",
+          "url": "https://github.com/rollup/rollup/issues/6369"
+        }
+      ],
+      "change": "Review answers a fixed list of ways earlier changes failed (risk classes), each with a signed record of the command that checked it. After a second failed round the agent session running the shift takes the item over or shelves it; this item was shelved on 2026-11-11.",
+      "moves": "Merged without rework"
+    },
+    {
+      "date": "2026-11-20",
+      "happened": "Until this date the factory said its work was AI-written only where a project asked: 25 of the 129 pull-request descriptions carry such a statement and the other 104 carry none. A statement made only in a comment, as on postcss#2182, is not counted.",
+      "links": [
+        {
+          "label": "direction",
+          "path": "docs/direction.md"
+        }
+      ],
+      "change": "New pull requests say they are automated and link to this repository. Projects that ban or restrict AI-generated contributions are not candidates.",
+      "moves": "Which projects are candidates"
+    }
+  ]
+}

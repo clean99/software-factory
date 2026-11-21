@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import pathlib
+import re
 import shlex
 import subprocess
 import tempfile
@@ -206,11 +207,103 @@ class PublicExportTests(unittest.TestCase):
         self.assertEqual(data["metrics"]["prs_merged"]["value"], 2)
         self.assertEqual(data["metrics"]["factory_test_count"]["value"], 2)
         self.assertEqual(data["links"]["dashboard"], self.config["public"]["dashboard_url"])
-        self.assertIn(self.config["public"]["dashboard_url"], (self.out / "site/index.html").read_text())
+        for name in ("index.html", "board.html"):
+            page = (self.out / "site" / name).read_text()
+            self.assertIn("https://github.com/" + self.config["public"]["repository"], page)
+            self.assertNotIn(str(records), page)
+            self.assertNotIn("private-marker", page)
         self.assertEqual(json.loads((self.out / "ledger/prs.json").read_text()), [])
         self.assertEqual({p: p.read_bytes() for p in records.iterdir()}, before)
         self.assertNotIn("private-marker", (self.out / "site/metrics.json").read_text())
-        self.assertNotIn(str(records), (self.out / "site/index.html").read_text())
+
+    def test_readme_snapshot_images_and_relative_links_exist_in_built_export(self):
+        from factory.core import metrics
+
+        root = pathlib.Path(__file__).resolve().parents[1]
+        rules = json.loads(public.POLICY.read_text())
+        self.write('factory.config.json', json.dumps(self.config))
+        self.write('ledger/prs.json', json.dumps([{'url': 'https://github.com/example/project/pull/1',
+                   'status': 'merged', 'submitted_at': '2026-01-01T00:00:00Z'}]))
+        self.write('workspace/shift-logs/one/summary.json', json.dumps({'status': 'exited 0', 'ended_at': '2026-01-04T00:00:00Z'}))
+        self.write('workspace/shift-logs/two/summary.json', json.dumps({'status': 'exited 1', 'ended_at': '2026-01-05T00:00:00Z'}))
+        with patch.object(metrics, 'public_files', wraps=metrics.public_files) as provider:
+            result = public.build(self.out, root=root, config=self.config, rules=rules, records_root=self.source)
+        self.assertTrue(result['ok'], result)
+        provider.assert_called_once()
+        data = json.loads((self.out / 'site/metrics.json').read_text())
+        text = (self.out / 'README.md').read_text()
+        self.assertIn(f"As of {data['cohort']['as_of']}: 1 pull requests opened since 2026-01-01 in 1 projects. "
+                      '1 merged, 0 closed without merge, 0 still open.', text)
+        self.assertIn('Since 2026-01-04 the scheduler has left 2 session summaries, 1 of them with a clean exit status;', text)
+        self.assertIsNone(data['activity']['as_of_local_date'])
+        self.assertIn('On n/a (Asia/Singapore): n/a opened, n/a merged, n/a closed without merge.', text)
+        self.assertNotRegex(text, r'\{[a-z_]+\}')
+        names = {f'{name}-{theme}.svg' for name in ('line', 'gate', 'board', 'profile', 'activity') for theme in ('light', 'dark')}
+        names.update(f'profile-{theme}-compact.svg' for theme in ('light', 'dark'))
+        self.assertEqual({p.name for p in (self.out / 'site').glob('*.svg')}, names)
+        for name in ('index.html', 'board.html', 'metrics.json'):
+            self.assertTrue((self.out / 'site' / name).is_file(), name)
+        assets = ['metrics.html', 'board.html', 'site.css', 'site.js', 'public-evidence.json',
+                  'fonts/OFL.txt', 'fonts/README.md', 'fonts/bigshoulders-600.woff2.b64', 'fonts/bigshoulders-800.woff2.b64']
+        for name in assets:
+            path = 'factory/core/' + name
+            expected = public.scrub((root / path).read_text(), rules.get('scrub', []), self.config)
+            self.assertEqual((self.out / path).read_text(), expected)
+        dashboard = self.config['public']['dashboard_url']
+        boards = re.findall(r'href="([^"]+)">(?:<b>)?Status board(?:</b>)?</a>', text)
+        self.assertEqual(boards, [dashboard + 'board.html'])
+        for name in ('activity-light.svg', 'activity-dark.svg'):
+            self.assertIn('site/' + name, text)
+        links = re.findall(r'(?:\]\(|(?:href|src|srcset)=")((?:docs|core|lines|factory|tests|site|schedule)/[^)"\s]+)', text)
+        self.assertGreater(len(links), 10)
+        for name in links:
+            self.assertTrue((self.out / name.split('#', 1)[0]).is_file(), name)
+        self.assertEqual(json.loads((self.out / 'lines/oss/profile-highlights.json').read_text()),
+                         {'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': []})
+        self.assertEqual({p.stem for p in (self.out / 'tests').glob('test_*.py')}, set(rules['tests']['included']))
+
+    def test_readme_daily_placeholders_use_the_retained_local_day(self):
+        from factory.core import metrics
+
+        data = metrics.compute({'prs': []}, self.config)
+        data['activity'] = {'as_of_local_date': '2026-11-20', 'days': [
+            {'date': '2026-11-19', 'opened': 9, 'merged': 8, 'closed_unmerged': 7},
+            {'date': '2026-11-20', 'opened': 0, 'merged': 1, 'closed_unmerged': 2}]}
+        template = 'On {local_date}: {today_opened}, {today_merged}, {today_closed}.'
+
+        def rendered():
+            return public.readme(template, 'example/factory', 'https://example.test/',
+                                {'site/metrics.json': json.dumps(data)}, 'included')
+
+        self.assertEqual(rendered(), 'On 2026-11-20: 0, 1, 2.')
+        data['activity']['days'].pop()
+        self.assertEqual(rendered(), 'On 2026-11-20: n/a, n/a, n/a.')
+        data.pop('activity')
+        self.assertEqual(rendered(), 'On n/a: n/a, n/a, n/a.')
+        self.assertEqual(public.readme(template, 'example/factory', 'https://example.test/', {}, 'not installed'), '')
+
+    def test_untracked_or_undated_sessions_refuse_readme_export(self):
+        from factory.core import metrics
+
+        self.write('readme.txt', 'Since {sessions_since}: {sessions_clean} of {sessions_total} sessions.\n')
+        for shifts in ([], [{'status': 'exited 0'}]):
+            data = metrics.compute({'prs': [], 'shifts': shifts}, self.config)
+            files = {'site/metrics.json': json.dumps(data)}
+            with self.subTest(shifts=shifts), patch.object(public, 'metrics_files', return_value=(files, 'included')):
+                with self.assertRaisesRegex(ValueError, 'session summaries need a tracked value and since date'):
+                    self.export()
+                self.assertFalse(self.out.exists())
+
+    def test_missing_metrics_drops_snapshot_paragraph_and_site_image_blocks_only(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        template = (root / 'factory/core/public-readme.txt').read_text()
+        self.write('readme.txt', template)
+        self.assertTrue(self.export()['ok'])
+        text = (self.out / 'README.md').read_text()
+        self.assertNotRegex(text, r'\{[a-z_]+\}')
+        self.assertNotIn('site/', text)
+        self.assertIn('href="docs/metrics.md"', text)
+        self.assertIn(self.config['public']['dashboard_url'], text)
 
     def test_installed_metrics_without_adapter_blocks_export(self):
         from factory.core import metrics
@@ -227,7 +320,8 @@ class PublicExportTests(unittest.TestCase):
         self.config["public"]["disclosure_since"] = "2026-11-20"
         projected = public.public_config(self.config)
         self.assertEqual(projected["public"], self.config["public"])
-        with patch.dict(public.CONFIG, projected, clear=True):
+        with patch.dict(public.CONFIG, projected, clear=True), patch.object(profile_readme, 'load_highlights', return_value={
+                'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': []}):
             url = "https://github.com/" + projected["public"]["repository"]
             self.assertIn(url, disclosure.default_line())
             self.assertIn(url, profile_readme.portfolio([], "fixture-owner"))

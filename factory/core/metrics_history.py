@@ -1,4 +1,4 @@
-"""Read-only GitHub history acquisition and offline first-round classification.
+"""Read-only GitHub history acquisition and offline outcome classification.
 
 Only role labels and structural evidence survive projection. Committer timestamps
 are proxies for pushes: GitHub's timeline does not expose ordinary push batches.
@@ -11,12 +11,14 @@ import re
 import subprocess
 from collections import Counter
 
-from factory.core.metrics import normalize_prs, timestamp
+from factory.core.metrics import activity_rows, github_link, normalize_prs, pr_url, timestamp
 from factory.util import CONFIG, ROOT, CommandError, write_json
 
 SCHEMA_VERSION = 1
 REVIEW_STATES = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}
-EVENTS = {"head_ref_force_pushed", "review_requested", "closed", "merged"}
+EVENTS = {"head_ref_force_pushed", "review_requested", "closed", "merged", "reopened"}
+OBSERVATION_ERRORS = {"unavailable", "rate_limited_or_forbidden", "transport_error", "request_failed", "invalid_response",
+                      "missing_account", "missing_submission_date", "pagination_overflow", "incomplete_population"}
 SHA = re.compile(r"[0-9a-f]{40}")
 
 
@@ -42,7 +44,22 @@ def api(endpoint, *, paginate=False):
     try:
         data = json.loads(result.stdout)
         if paginate:
-            if not isinstance(data, list) or any(not isinstance(page, list) for page in data):
+            if not isinstance(data, list):
+                raise ValueError()
+            if endpoint.startswith("search/issues?"):
+                if not data or any(not isinstance(page, dict) or not isinstance(page.get("items"), list)
+                                   or page.get("incomplete_results") is not False or type(page.get("total_count")) is not int
+                                   or page["total_count"] < 0 for page in data):
+                    raise ValueError()
+                total = data[0]["total_count"]
+                if any(page["total_count"] > 1000 for page in data):
+                    raise HistoryError("pagination_overflow")
+                urls = [row.get("html_url") for page in data for row in page["items"] if isinstance(row, dict)]
+                if (any(page["total_count"] != total for page in data) or sum(len(page["items"]) for page in data) != total
+                        or len(urls) != total or any(not pr_url(url) for url in urls) or len(set(urls)) != total):
+                    raise ValueError()
+                data = [page["items"] for page in data]
+            if any(not isinstance(page, list) for page in data):
                 raise ValueError()
             data = [row for page in data for row in page]
         return data
@@ -170,7 +187,7 @@ def refresh(rows, cache_path, *, force=False, limit=None):
     cache = load_cache(cache_path)
     pathlib.Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
     urls = {r["url"] for r in prs}
-    cache["prs"] = {url: row for url, row in cache["prs"].items() if url in urls}
+    cache["prs"] = {url: row for url, row in cached_prs(cache).items() if url in urls}
     pending = [r["url"] for r in prs if force or not (
         cache["prs"].get(r["url"], {}).get("status") == "available"
         and cache["prs"][r["url"]].get("state") in {"merged", "closed"}
@@ -256,7 +273,7 @@ def classify(row):
                 fix_hours.append((next_push - request).total_seconds() / 3600)
         reviewed = bool(merged or reviews)
         accepted = bool(merged or any(state == "APPROVED" for _, state in reviews))
-        return {"created_at": row["created_at"], "reviewed": reviewed,
+        return {"created_at": row["created_at"], "state": row["state"], "reviewed": reviewed,
                 "clean": reviewed and accepted and not changes and not self_pushes and not (merged and other_pushes),
                 "changes_requested": len(changes), "rounds": len(changes) + 1 if reviewed else None,
                 "self_pushes": len(self_pushes), "other_pushes": len(other_pushes),
@@ -265,9 +282,213 @@ def classify(row):
         return None
 
 
-def observations(prs, cache):
+CLOSURE_REASONS = {"no-real-user", "works-as-designed", "approach-declined", "duplicate", "superseded", "process", "withdrawn", "unexplained"}
+EDIT_CLASSES = {"repair", "scope", "refactor", "style", "tests", "notes", "bot", "base"}
+
+
+def normalize_outcomes(data):
+    result = {"schema": 2, "closures": {}, "maintainer_edits": {}, "replacements": []}
+    if not isinstance(data, dict) or type(data.get("schema")) is not int or data["schema"] not in (1, 2):
+        return result, 1
+    invalid = 0
+    for collection, field, vocabulary in (("closures", "reason", CLOSURE_REASONS), ("maintainer_edits", "class", EDIT_CLASSES)):
+        rows = data.get(collection, {})
+        if not isinstance(rows, dict):
+            invalid += 1
+            continue
+        for key, entry in rows.items():
+            url = pr_url(key)
+            if (not url or not isinstance(entry, dict) or not isinstance(entry.get(field), str)
+                    or entry[field] not in vocabulary or not github_link(entry.get("evidence"))
+                    or not isinstance(entry.get("note"), str) or len(entry["note"]) > 200):
+                invalid += 1
+                continue
+            result[collection][url] = {field: entry[field], "evidence": entry["evidence"], "note": ""}
+    pairs = data.get("replacements", [])
+    if not isinstance(pairs, list):
+        return result, invalid + 1
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            invalid += 1
+            continue
+        old, new, source = pr_url(pair.get("old")), pr_url(pair.get("new")), pair.get("source")
+        if (not old or not new or old == new or old.split("/pull/")[0] != new.split("/pull/")[0]
+                or not isinstance(source, str) or not source.strip() or len(source) > 500):
+            invalid += 1
+            continue
+        result["replacements"].append({"old": old, "new": new, "source": source if github_link(source) else "Recorded source note"})
+    return result, invalid
+
+
+def outcome(classified, ledger_row, outcomes):
+    """Classify one saved outcome; retain flags, not private classification notes."""
+    outcomes, _ = normalize_outcomes(outcomes)
+    result = {"bucket": "unclassified", "reason": None, "flags": [], "evidence": None, "unclassified_edit": False, "edit_class": None}
+    state = ledger_row.get("outcome")
+    url = ledger_row["url"]
+    if state == "merged":
+        if not classified or classified["state"] != "merged":
+            result["bucket"] = "merged_unverified"
+            return result
+        flags = result["flags"]
+        if classified["changes_requested"]:
+            flags.append("change-requested")
+        if classified["self_pushes"]:
+            flags.append("author-update")
+        if classified["other_pushes"]:
+            entry = outcomes["maintainer_edits"].get(url)
+            if entry:
+                result["evidence"] = entry["evidence"]
+            else:
+                result["unclassified_edit"] = True
+            result["edit_class"] = entry["class"] if entry else "unclassified"
+            if not entry or entry["class"] == "repair":
+                flags.append("maintainer-repair")
+        result.update(bucket="merged_reworked" if flags else "merged_no_rework", reason=flags[0] if flags else None)
+    elif state == "closed":
+        entry = outcomes["closures"].get(url)
+        result.update(bucket="closed", reason=entry["reason"] if entry else "unclassified", evidence=entry["evidence"] if entry else None)
+    elif state == "open":
+        status = str(ledger_row.get("status") or ledger_row.get("state") or "").lower()
+        responded = ledger_row.get("responded")
+        responded = responded if isinstance(responded, dict) else {}
+        replied = status in {"in-review", "community-review"} or any(responded.get(kind) is True for kind in ("maintainer", "community"))
+        no_reply = not replied and (status == "silent" or all(responded.get(kind) is False for kind in ("maintainer", "community")))
+        reason = "in-review" if replied else "unchecked"
+        if status == "awaiting-cla":
+            reason = "agreement"
+        elif no_reply:
+            reason = "no-reply"
+        result.update(bucket="open", reason=reason)
+    return result
+
+
+def cached_prs(cache):
     rows = cache.get("prs", {}) if isinstance(cache, dict) and cache.get("schema_version") == SCHEMA_VERSION else {}
+    if not isinstance(rows, dict):
+        return {}
+    return {url: row for key, row in rows.items() if (url := pr_url(key)) and isinstance(row, dict)}
+
+
+def observations(prs, cache):
+    rows = cached_prs(cache)
     return {r["url"]: result for r in prs if (result := classify(rows.get(r["url"]))) is not None}
+
+
+def observation_error(reason):
+    return reason if isinstance(reason, str) and reason in OBSERVATION_ERRORS else "request_failed"
+
+
+def project_activity(pr, timeline):
+    """Keep event times and current state, not actors or thread contents."""
+    try:
+        url = pr_url(pr["html_url"])
+        merged = pr["pull_request"]["merged_at"]
+        if not url or pr["state"] not in {"open", "closed"} or not isinstance(timeline, list):
+            raise HistoryError("invalid_response")
+        result = {"url": url, "status": "merged" if merged else pr["state"],
+                  "created_at": date(pr["created_at"]) if pr["created_at"] else None,
+                  "closed_at": date(pr["closed_at"]) if pr["closed_at"] else None,
+                  "merged_at": date(merged) if merged else None, "updated_at": date(pr["updated_at"]), "events": []}
+        for event in timeline:
+            if not isinstance(event, dict):
+                raise HistoryError("invalid_response")
+            if event.get("event") in {"closed", "merged", "reopened"}:
+                result["events"].append({"event": event["event"], "created_at": date(event["created_at"])})
+        return result
+    except (KeyError, TypeError, AttributeError):
+        raise HistoryError("invalid_response") from None
+
+
+def activity_observation(found, previous, ledger_rows=()):
+    previous_rows, quality = activity_rows(previous)
+    saved = {} if any(quality.values()) else {r["url"]: r for r in previous_rows}
+    ledger = {r["url"]: r for r in normalize_prs(ledger_rows)[0]}
+    rows = []
+    for pr in found:
+        url = pr_url(pr.get("html_url"))
+        old = saved.get(url, {})
+        # GitHub updates updated_at on close/reopen; unchanged timelines are reusable.
+        if old.get("updated_at") == date(pr.get("updated_at")) and "events" in old:
+            timeline = old["events"]
+        else:
+            repo, number = url.removeprefix("https://github.com/").split("/pull/")
+            timeline = api(f"repos/{repo}/issues/{number}/timeline?per_page=100", paginate=True)
+        row = project_activity(pr, timeline)
+        if not row["created_at"] and (at := timestamp(ledger.get(url, {}).get("submitted_at"), exact=True)):
+            row["submitted_at"] = at.isoformat(timespec="seconds")
+        rows.append(row)
+    return {"checked_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "prs": rows,
+            "ledger_urls": sorted(ledger) if ledger else sorted(r["url"] for r in rows)}
+
+
+def reconciliation(cache):
+    row = cache.get("reconciliation") if isinstance(cache, dict) else None
+    if isinstance(row, dict) and timestamp(row.get("checked_at"), exact=True):
+        if "error" in row:
+            return {"checked_at": row["checked_at"], "error": observation_error(row["error"])}
+        counts = ("github", "ledger", "github_only", "ledger_only")
+        if all(type(row.get(key)) is int and row[key] >= 0 for key in counts):
+            return {"checked_at": row["checked_at"], **{key: row[key] for key in counts}}
+    return {"status": "not_checked"}
+
+
+def reconcile(rows, *, previous=None, include_activity=False):
+    checked_at = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    previous = previous if isinstance(previous, dict) else {}
+    prior = previous.get("activity")
+    prior = prior if isinstance(prior, dict) else {}
+    try:
+        prs, invalid, duplicates = normalize_prs(rows)
+        if invalid or duplicates:
+            raise HistoryError("invalid_response")
+        prior_rows, quality = activity_rows(prior)
+        saved = {} if any(quality.values()) else {r["url"]: r for r in prior_rows}
+        dates = []
+        for row in prs:
+            created = timestamp(saved.get(row["url"], {}).get("created_at"), exact=True) or timestamp(row.get("created_at"), exact=True)
+            submitted = timestamp(row.get("submitted_at"))
+            if created:
+                dates.append(created.date().isoformat())
+            elif submitted:
+                dates.append((submitted.date() - dt.timedelta(days=1)).isoformat())
+        if not dates:
+            raise HistoryError("missing_submission_date")
+        user = CONFIG.get("github_user")
+        if not isinstance(user, str) or not re.fullmatch(r"[A-Za-z0-9-]+", user):
+            raise HistoryError("missing_account")
+        found = api(f"search/issues?q=author:{user}+type:pr+is:public+-user:{user}+created:>={min(dates)}&per_page=100", paginate=True)
+        if not isinstance(found, list):
+            raise HistoryError("invalid_response")
+        github = set()
+        for row in found:
+            url = pr_url(row.get("html_url")) if isinstance(row, dict) else None
+            if not url or url in github:
+                raise HistoryError("invalid_response")
+            github.add(url)
+        ledger = {row["url"] for row in prs}
+        result = {"checked_at": checked_at, "github": len(github), "ledger": len(ledger),
+                  "github_only": len(github - ledger), "ledger_only": len(ledger - github)}
+        if include_activity:
+            admitted = [row for row in found if pr_url(row["html_url"]) in ledger]
+            # A delayed submission record must not permanently hide a ledger PR.
+            for url in sorted(ledger - github):
+                repo, number = url.removeprefix("https://github.com/").split("/pull/")
+                pr = api(f"repos/{repo}/pulls/{number}")
+                if (not isinstance(pr, dict) or pr_url(pr.get("html_url")) != url
+                        or pr.get("base", {}).get("repo", {}).get("private") is not False
+                        or str(pr.get("user", {}).get("login", "")).lower() != user.lower()
+                        or repo.split("/")[0].lower() == user.lower()):
+                    raise HistoryError("incomplete_population")
+                admitted.append({**pr, "pull_request": {"merged_at": pr.get("merged_at")}})
+            result["activity"] = activity_observation(admitted, prior, prs)
+            result["checked_at"] = result["activity"]["checked_at"]
+        return result
+    except (HistoryError, KeyError, TypeError, AttributeError) as error:
+        result = {"checked_at": checked_at, "error": observation_error(str(error)) if isinstance(error, HistoryError) else "invalid_response"}
+        if include_activity:
+            result["activity"] = {**prior, "error": result["error"]}
+        return result
 
 
 def command(args):
@@ -289,10 +510,18 @@ def command(args):
         if not isinstance(rows, list):
             raise ValueError()
         result = refresh(rows, cache_path, force=args.force, limit=args.limit)
+        if not args.no_reconcile:
+            if args.limit is not None:
+                result["reconciliation"] = {"status": "deferred", "reason": "limited_refresh"}
+            else:
+                cache = load_cache(cache_path)
+                cache["reconciliation"] = reconcile(rows, previous=cache.get("reconciliation"), include_activity=True)
+                result["reconciliation"] = reconciliation(cache)
+                write_json(cache_path, cache)
     except (OSError, ValueError, UnicodeError):
         raise CommandError("metrics history: unreadable ledger or cache destination") from None
     print(json.dumps(result, sort_keys=True))
-    return 3 if result["stopped"] else 0
+    return 3 if result["stopped"] or result.get("reconciliation", {}).get("error") else 0
 
 
 def positive(value):
@@ -307,7 +536,8 @@ def register(parser):
     history.add_argument("--records-root", help="read only ledger/prs.json under another checkout")
     history.add_argument("--ledger", help="read this PR ledger instead")
     history.add_argument("--cache", default=str(ROOT / "ledger/pr-history.json"), help="cache under this checkout's ledger directory")
-    history.add_argument("--limit", type=positive, help="maximum PRs to fetch this time (oldest snapshots first)")
+    history.add_argument("--limit", type=positive, help="maximum PR histories to fetch (oldest first); defers population and daily activity reconciliation, retaining the last snapshot")
     history.add_argument("--refresh-open", action="store_true", help="refresh open PRs (the default); concluded snapshots are reused")
     history.add_argument("--force", action="store_true", help="also refresh already cached concluded PRs")
+    history.add_argument("--no-reconcile", action="store_true", help="skip the account-wide upstream PR search")
     history.set_defaults(fn=command)

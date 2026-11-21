@@ -1,6 +1,222 @@
 {
-  "schema_version": 3,
-  "generated_at": "2026-11-21T01:53:38+00:00",
+  "schema_version": 4,
+  "generated_at": "2026-11-21T11:20:32+00:00",
+  "activity": {
+    "zone": "Asia/Singapore",
+    "as_of": "2026-11-20T09:34:23+00:00",
+    "as_of_local_date": "2026-11-20",
+    "observation": {
+      "ok": false,
+      "checked_at": "2026-11-20T09:34:23+00:00",
+      "error": "not_checked"
+    },
+    "today": {
+      "date": "2026-11-20",
+      "opened": 0,
+      "merged": 0,
+      "closed_unmerged": 0,
+      "partial": true
+    },
+    "days": [
+      {
+        "date": "2026-10-24",
+        "opened": 0,
+        "merged": 0,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-10-25",
+        "opened": 13,
+        "merged": 0,
+        "closed_unmerged": 2
+      },
+      {
+        "date": "2026-10-26",
+        "opened": 10,
+        "merged": 5,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-10-27",
+        "opened": 10,
+        "merged": 6,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-10-28",
+        "opened": 10,
+        "merged": 11,
+        "closed_unmerged": 1
+      },
+      {
+        "date": "2026-10-29",
+        "opened": 0,
+        "merged": 3,
+        "closed_unmerged": 1
+      },
+      {
+        "date": "2026-10-30",
+        "opened": 5,
+        "merged": 2,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-10-31",
+        "opened": 33,
+        "merged": 13,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-01",
+        "opened": 9,
+        "merged": 5,
+        "closed_unmerged": 2
+      },
+      {
+        "date": "2026-11-02",
+        "opened": 2,
+        "merged": 6,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-03",
+        "opened": 12,
+        "merged": 15,
+        "closed_unmerged": 1
+      },
+      {
+        "date": "2026-11-04",
+        "opened": 11,
+        "merged": 7,
+        "closed_unmerged": 1
+      },
+      {
+        "date": "2026-11-05",
+        "opened": 6,
+        "merged": 7,
+        "closed_unmerged": 1
+      },
+      {
+        "date": "2026-11-06",
+        "opened": 2,
+        "merged": 2,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-07",
+        "opened": 1,
+        "merged": 2,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-08",
+        "opened": 1,
+        "merged": 0,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-09",
+        "opened": 0,
+        "merged": 4,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-10",
+        "opened": 0,
+        "merged": 3,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-11",
+        "opened": 2,
+        "merged": 4,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-12",
+        "opened": 1,
+        "merged": 1,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-13",
+        "opened": 1,
+        "merged": 1,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-14",
+        "opened": 0,
+        "merged": 0,
+        "closed_unmerged": 1
+      },
+      {
+        "date": "2026-11-15",
+        "opened": 0,
+        "merged": 2,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-16",
+        "opened": 0,
+        "merged": 0,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-17",
+        "opened": 0,
+        "merged": 1,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-18",
+        "opened": 0,
+        "merged": 0,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-19",
+        "opened": 0,
+        "merged": 0,
+        "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-20",
+        "opened": 0,
+        "merged": 0,
+        "closed_unmerged": 0
+      }
+    ],
+    "window_days": 28,
+    "totals": {
+      "opened": 129,
+      "merged": 100,
+      "closed_unmerged": 10,
+      "open": 19,
+      "first_opened_local_date": "2026-10-25",
+      "projects_with_merges": 19
+    },
+    "missing": {
+      "opened_at": 0,
+      "merged_at": 0,
+      "closed_at": 0
+    },
+    "replacements": {
+      "pairs": 0
+    },
+    "reopened": 0,
+    "reconciliation": {
+      "ok": true,
+      "opened": 129,
+      "outcomes": 129,
+      "difference": 0,
+      "unclassified": 0,
+      "invalid_replacements": 0,
+      "invalid_rows": 0,
+      "duplicate_rows": 0,
+      "population_difference": 0
+    }
+  },
   "links": {
     "repository": "https://github.com/clean99/software-factory",
     "readme": "https://github.com/clean99/software-factory#readme",
@@ -44,7 +260,7 @@
       "value": 18,
       "unit": "count",
       "status": "tracked",
-      "definition": "Distinct PRs with a saved open outcome.",
+      "definition": "Distinct PRs with a saved open outcome. Open sub-states: awaiting-cla is agreement; otherwise no-reply requires silent status or explicit responded.maintainer=false and responded.community=false, with neither a true human response flag nor in-review/community-review status. A human response flag or in-review/community-review status is in-review; other submissions are unchecked. Source: factory/oss/followup.py:341-351,394-409; factory/oss/submit.py:336-339.",
       "source": "PR ledger: saved outcomes",
       "coverage": {
         "covered": 129,
@@ -53,62 +269,82 @@
       "reason": null,
       "note": "Saved state only; this command does not refresh GitHub."
     },
-    "merge_rate": {
-      "label": "Merge rate",
-      "group": "Acceptance",
-      "value": 0.91,
-      "unit": "percent",
-      "status": "partial",
-      "definition": "Merged / (merged + closed without merge). Open and unclassified outcomes are excluded.",
-      "source": "PR ledger: saved outcomes",
-      "coverage": {
-        "covered": 111,
-        "total": 129
-      },
-      "reason": null,
-      "note": "Coverage counts concluded PRs against all classified PRs; open PRs are not failures.",
-      "numerator": 101,
-      "denominator": 111
-    },
-    "closed_unmerged_share": {
-      "label": "Closed without merge",
-      "group": "Acceptance",
-      "value": 0.09,
-      "unit": "percent",
-      "status": "partial",
-      "definition": "Closed without merge / (merged + closed without merge).",
-      "source": "PR ledger: saved outcomes",
-      "coverage": {
-        "covered": 111,
-        "total": 129
-      },
-      "reason": null,
-      "note": null,
-      "numerator": 10,
-      "denominator": 111
-    },
-    "first_round_approval_share": {
-      "label": "First-round approval",
-      "group": "First-round quality",
-      "value": 0.518,
-      "unit": "percent",
+    "prs_closed": {
+      "label": "PRs closed",
+      "group": "Output",
+      "value": 10,
+      "unit": "count",
       "status": "tracked",
-      "definition": "Approved or merged with no non-self change request, no self non-merge commit/force-push after submission, and (if merged) no non-self corrective update before merge / reviewed PRs. Reviewed means merged or at least one non-self APPROVED, CHANGES_REQUESTED or COMMENTED review; self reviews do not count.",
-      "source": "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache",
+      "definition": "Distinct PRs with a saved closed outcome.",
+      "source": "PR ledger: saved outcomes",
       "coverage": {
         "covered": 129,
         "total": 129
       },
       "reason": null,
-      "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push.",
-      "numerator": 59,
-      "denominator": 114,
-      "excluded_histories": 0,
-      "unreviewed": 15
+      "note": "Saved state only; this command does not refresh GitHub."
+    },
+    "cohort_merge_rate": {
+      "label": "Cohort merge rate",
+      "group": "Outcome",
+      "value": 0.774,
+      "unit": "percent",
+      "status": "tracked",
+      "definition": "Merged / all PRs opened on or before the date 14 days before the snapshot date (UTC). Closed and unanswered PRs stay in the denominator; exact timestamps establish opening dates.",
+      "source": "PR ledger: saved outcomes",
+      "coverage": {
+        "covered": 124,
+        "total": 124
+      },
+      "reason": null,
+      "note": "95% Wilson interval assumes independent PRs; repository clustering limits that assumption.",
+      "numerator": 96,
+      "denominator": 124,
+      "interval": [
+        0.693,
+        0.8389
+      ],
+      "open": 18,
+      "closed": 10
+    },
+    "merged_no_rework_share": {
+      "label": "Merged without rework",
+      "group": "Outcome",
+      "value": 0.716,
+      "unit": "percent",
+      "status": "partial",
+      "definition": "Merged without rework: merged with no formal change request, no content change pushed by the author after opening, and no repair by a maintainer before merging / merged. Uses cohort merges with complete cached histories. Unclassified maintainer edits count against the share. Maintainer scope changes, refactors, style changes, tests, release notes, bot commits and base merges are recorded and do not count; merge-from-base commits are excluded.",
+      "source": "Saved role-only PR history; validated outcome classifications",
+      "coverage": {
+        "covered": 95,
+        "total": 96
+      },
+      "reason": null,
+      "note": "Incomplete merged histories are excluded from this denominator and reduce coverage. Commit dates proxy ordinary push times; force-push times are exact.",
+      "numerator": 68,
+      "denominator": 95,
+      "unclassified_edits": 0
+    },
+    "decided_merge_rate": {
+      "label": "Merged among decided",
+      "group": "Outcome",
+      "value": 0.91,
+      "unit": "percent",
+      "status": "partial",
+      "definition": "Merged / (merged + closed without merge) over all saved PRs, not only the mature cohort.",
+      "source": "PR ledger: saved outcomes",
+      "coverage": {
+        "covered": 111,
+        "total": 129
+      },
+      "reason": null,
+      "note": "Leaves out pull requests that are still open, so on the same data it reads higher than the cohort merge rate.",
+      "numerator": 101,
+      "denominator": 111
     },
     "fixes_pushed_after_review": {
       "label": "PRs with fixes pushed after review",
-      "group": "Defects",
+      "group": "Review history",
       "value": 25,
       "unit": "count",
       "status": "tracked",
@@ -124,7 +360,7 @@
     },
     "fixes_pushed_before_review": {
       "label": "Pre-review self-corrections (defect signal)",
-      "group": "Defects",
+      "group": "Review history",
       "value": 7,
       "unit": "count",
       "status": "tracked",
@@ -140,7 +376,7 @@
     },
     "review_fix_hours": {
       "label": "Review request to pushed fix",
-      "group": "Factory speed",
+      "group": "Review history",
       "value": 1.401,
       "unit": "hours",
       "status": "tracked",
@@ -154,21 +390,6 @@
       "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push.",
       "samples": 9,
       "requests": 9
-    },
-    "review_rounds_per_pr": {
-      "label": "Upstream review rounds per PR",
-      "group": "First-round quality",
-      "value": 1.079,
-      "unit": "rounds",
-      "status": "tracked",
-      "definition": "Mean non-self CHANGES_REQUESTED review count + 1 over reviewed PRs. Distinct from pre-publication independent review.",
-      "source": "GitHub PR metadata, paginated reviews, issue timeline and commits: saved role-only history cache",
-      "coverage": {
-        "covered": 129,
-        "total": 129
-      },
-      "reason": null,
-      "note": "Coverage is complete cached histories / ledger PRs; unavailable histories are excluded, not clean. Tracked requires at least 90% coverage. Committer dates proxy ordinary pushes, not actual push times or batches; force-push times are exact. Merge commits are excluded. GitHub cannot recover every removed commit or delayed push."
     },
     "median_lead_hours": {
       "label": "Median candidate-to-PR lead time",
@@ -197,7 +418,7 @@
         "covered": 0,
         "total": 10
       },
-      "reason": "Closed outcomes have no structured closure-reason classification. Private notes and generic closed events cannot reliably distinguish selection misses from other closures.",
+      "reason": "Closure reasons are reported separately; no dedicated candidate-selection-miss classification is recorded. Private notes and generic closed events are not interpreted.",
       "note": null
     },
     "ci_failures_after_submission": {
@@ -247,7 +468,7 @@
     },
     "independent_review_rounds_per_pr": {
       "label": "Pre-publication independent review rounds per PR",
-      "group": "First-round quality",
+      "group": "Review history",
       "value": 1.445,
       "unit": "rounds",
       "status": "partial",
@@ -274,6 +495,21 @@
       },
       "reason": null,
       "note": "This is the persisted candidate population, not all opportunities inspected."
+    },
+    "candidates_stopped_before_publish": {
+      "label": "Candidates stopped before publishing",
+      "group": "Filtering",
+      "value": 63,
+      "unit": "count",
+      "status": "tracked",
+      "definition": "Item records with status dropped, parked, blocked or abandoned, no PR URL and no matching PR in the ledger.",
+      "source": "Item metadata: status, pr_url; PR ledger item references",
+      "coverage": {
+        "covered": 192,
+        "total": 192
+      },
+      "reason": null,
+      "note": null
     },
     "dropped_qualify": {
       "label": "Rejected at qualification",
@@ -455,12 +691,13 @@
       "reason": null,
       "note": null,
       "numerator": 11,
-      "denominator": 13
+      "denominator": 13,
+      "since": "2026-11-12"
     },
     "factory_test_count": {
       "label": "Factory test count",
       "group": "Factory health",
-      "value": 1566,
+      "value": 1755,
       "unit": "count",
       "status": "tracked",
       "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
@@ -475,7 +712,7 @@
     "factory_test_runtime": {
       "label": "Factory test runtime",
       "group": "Factory health",
-      "value": 165.787,
+      "value": 238.689,
       "unit": "seconds",
       "status": "tracked",
       "definition": "Test count or wall-clock runtime from the explicitly supplied full-suite runner report; never inferred from source or unrelated item tests.",
@@ -526,8 +763,8 @@
       "definition": "Non-merge commits touching factory, bin, schedule, hooks or tests whose subject begins fix, fixes or fixed. Counts commits, not distinct defects.",
       "source": "Local git history",
       "coverage": {
-        "covered": 158,
-        "total": 158
+        "covered": 161,
+        "total": 161
       },
       "reason": null,
       "note": "Only explicitly labeled repair commits; differently worded repairs are excluded."
@@ -539,100 +776,80 @@
         "week": "2026-10-19",
         "opened": 22,
         "merged": 3,
-        "open_submission_cohort": 7,
         "cohort_merged": 13,
-        "cohort_concluded": 15,
-        "first_round_numerator": 9,
-        "first_round_denominator": 15,
+        "cohort_no_rework": 10,
+        "cohort_closed": 2,
+        "cohort_open": 7,
         "history_covered": 22,
         "history_total": 22,
-        "merge_rate": 0.8666666666666667,
-        "closed_unmerged_share": 0.13333333333333333,
         "median_lead_hours": 1.07,
         "lead_time_samples": 22,
         "review_fix_hours": 10.097,
         "review_fix_samples": 2,
-        "first_round_approval_share": 0.6,
         "owner_interventions": null
       },
       {
         "week": "2026-10-26",
         "opened": 68,
         "merged": 45,
-        "open_submission_cohort": 6,
         "cohort_merged": 57,
-        "cohort_concluded": 62,
-        "first_round_numerator": 38,
-        "first_round_denominator": 65,
+        "cohort_no_rework": 43,
+        "cohort_closed": 5,
+        "cohort_open": 6,
         "history_covered": 68,
         "history_total": 68,
-        "merge_rate": 0.9193548387096774,
-        "closed_unmerged_share": 0.08064516129032258,
         "median_lead_hours": 1.442,
         "lead_time_samples": 68,
         "review_fix_hours": 0.914,
         "review_fix_samples": 6,
-        "first_round_approval_share": 0.5846153846153846,
         "owner_interventions": null
       },
       {
         "week": "2026-11-02",
         "opened": 35,
         "merged": 39,
-        "open_submission_cohort": 5,
         "cohort_merged": 27,
-        "cohort_concluded": 30,
-        "first_round_numerator": 10,
-        "first_round_denominator": 30,
+        "cohort_no_rework": 16,
+        "cohort_closed": 3,
+        "cohort_open": 5,
         "history_covered": 35,
         "history_total": 35,
-        "merge_rate": 0.9,
-        "closed_unmerged_share": 0.1,
         "median_lead_hours": 5.702,
         "lead_time_samples": 35,
         "review_fix_hours": 6.762,
         "review_fix_samples": 1,
-        "first_round_approval_share": 0.3333333333333333,
         "owner_interventions": null
       },
       {
         "week": "2026-11-09",
         "opened": 4,
         "merged": 12,
-        "open_submission_cohort": 0,
         "cohort_merged": 4,
-        "cohort_concluded": 4,
-        "first_round_numerator": 2,
-        "first_round_denominator": 4,
+        "cohort_no_rework": 4,
+        "cohort_closed": 0,
+        "cohort_open": 0,
         "history_covered": 4,
         "history_total": 4,
-        "merge_rate": 1.0,
-        "closed_unmerged_share": 0.0,
         "median_lead_hours": 5.445,
         "lead_time_samples": 4,
         "review_fix_hours": null,
         "review_fix_samples": 0,
-        "first_round_approval_share": 0.5,
         "owner_interventions": null
       },
       {
         "week": "2026-11-16",
         "opened": 0,
         "merged": 2,
-        "open_submission_cohort": 0,
         "cohort_merged": 0,
-        "cohort_concluded": 0,
-        "first_round_numerator": 0,
-        "first_round_denominator": 0,
+        "cohort_no_rework": 0,
+        "cohort_closed": 0,
+        "cohort_open": 0,
         "history_covered": 0,
         "history_total": 0,
-        "merge_rate": null,
-        "closed_unmerged_share": null,
         "median_lead_hours": null,
         "lead_time_samples": 0,
         "review_fix_hours": null,
         "review_fix_samples": 0,
-        "first_round_approval_share": null,
         "owner_interventions": null
       }
     ],
@@ -647,24 +864,2004 @@
       }
     }
   },
+  "cohort": {
+    "maturity_days": 14,
+    "min_sample": 20,
+    "as_of": "2026-11-21",
+    "cutoff": "2026-11-07",
+    "n": 124,
+    "first_opened": "2026-10-24",
+    "last_opened": "2026-11-06",
+    "merged": 96,
+    "merged_no_rework": 68,
+    "merged_reworked": 27,
+    "merged_unverified": 1,
+    "maintainer_edits_neutral": 16,
+    "closed": 10,
+    "open": 18,
+    "excluded_recent": 5,
+    "excluded_undated": 0
+  },
+  "by_repository": [
+    {
+      "repository": "webpro-nl/knip",
+      "opened": 17,
+      "merged": 17,
+      "merged_no_rework": 8,
+      "closed": 0,
+      "open": 0
+    },
+    {
+      "repository": "assistant-ui/assistant-ui",
+      "opened": 15,
+      "merged": 13,
+      "merged_no_rework": 6,
+      "closed": 2,
+      "open": 0
+    },
+    {
+      "repository": "Arize-ai/phoenix",
+      "opened": 12,
+      "merged": 10,
+      "merged_no_rework": 7,
+      "closed": 0,
+      "open": 2
+    },
+    {
+      "repository": "Effect-TS/effect",
+      "opened": 12,
+      "merged": 12,
+      "merged_no_rework": 10,
+      "closed": 0,
+      "open": 0
+    },
+    {
+      "repository": "mantinedev/mantine",
+      "opened": 7,
+      "merged": 6,
+      "merged_no_rework": 5,
+      "closed": 0,
+      "open": 1
+    },
+    {
+      "repository": "Mintplex-Labs/anything-llm",
+      "opened": 7,
+      "merged": 6,
+      "merged_no_rework": 6,
+      "closed": 1,
+      "open": 0
+    },
+    {
+      "repository": "react-hook-form/resolvers",
+      "opened": 6,
+      "merged": 6,
+      "merged_no_rework": 6,
+      "closed": 0,
+      "open": 0
+    },
+    {
+      "repository": "react-hook-form/react-hook-form",
+      "opened": 5,
+      "merged": 4,
+      "merged_no_rework": 4,
+      "closed": 1,
+      "open": 0
+    },
+    {
+      "repository": "TanStack/virtual",
+      "opened": 5,
+      "merged": 3,
+      "merged_no_rework": 3,
+      "closed": 0,
+      "open": 2
+    },
+    {
+      "repository": "other",
+      "repositories": 22,
+      "opened": 38,
+      "merged": 19,
+      "merged_no_rework": 13,
+      "closed": 6,
+      "open": 13
+    }
+  ],
+  "pull_requests": [
+    {
+      "url": "https://github.com/cline/cline/pull/15325",
+      "repository": "cline/cline",
+      "number": 15325,
+      "opened": "2026-10-24",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/oxc-project/oxc/pull/28150",
+      "repository": "oxc-project/oxc",
+      "number": 28150,
+      "opened": "2026-10-24",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2212",
+      "repository": "webpro-nl/knip",
+      "number": 2212,
+      "opened": "2026-10-24",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/anomalyco/opencode/pull/58944",
+      "repository": "anomalyco/opencode",
+      "number": 58944,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "duplicate",
+      "flags": [],
+      "evidence": "https://github.com/anomalyco/opencode/pull/58944#issuecomment-6396423279",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17246",
+      "repository": "Arize-ai/phoenix",
+      "number": 17246,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17253",
+      "repository": "Arize-ai/phoenix",
+      "number": 17253,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17255",
+      "repository": "Arize-ai/phoenix",
+      "number": 17255,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10111",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10111,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/berriai/litellm/pull/48324",
+      "repository": "BerriAI/litellm",
+      "number": 48324,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "agreement",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/copilotkit/copilotkit/pull/7979",
+      "repository": "CopilotKit/CopilotKit",
+      "number": 7979,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/langchain-ai/langchainjs/pull/12033",
+      "repository": "langchain-ai/langchainjs",
+      "number": 12033,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/langfuse/langfuse/pull/19340",
+      "repository": "langfuse/langfuse",
+      "number": 19340,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mantinedev/mantine/pull/9321",
+      "repository": "mantinedev/mantine",
+      "number": 9321,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mantinedev/mantine/pull/9327",
+      "repository": "mantinedev/mantine",
+      "number": 9327,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/meta/lexical/pull/9464",
+      "repository": "meta/lexical",
+      "number": 9464,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/facebook/lexical/commit/55de812804953b474ef08fbd34a1abcaf7515f2e",
+      "edit_class": "scope"
+    },
+    {
+      "url": "https://github.com/mintplex-labs/anything-llm/pull/6840",
+      "repository": "Mintplex-Labs/anything-llm",
+      "number": 6840,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/pydantic/pydantic-ai/pull/11243",
+      "repository": "pydantic/pydantic-ai",
+      "number": 11243,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "process",
+      "flags": [],
+      "evidence": "https://github.com/pydantic/pydantic-ai/pull/11243#issuecomment-6397541005",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/solidjs/solid/pull/4266",
+      "repository": "solidjs/solid",
+      "number": 4266,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/tambo-ai/tambo/pull/3041",
+      "repository": "tambo-ai/tambo",
+      "number": 3041,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/upstash/context7/pull/3530",
+      "repository": "upstash/context7",
+      "number": 3530,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/vercel/ai/pull/24037",
+      "repository": "vercel/ai",
+      "number": 24037,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/withastro/starlight/pull/4299",
+      "repository": "withastro/starlight",
+      "number": 4299,
+      "opened": "2026-10-25",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17270",
+      "repository": "Arize-ai/phoenix",
+      "number": 17270,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17283",
+      "repository": "Arize-ai/phoenix",
+      "number": 17283,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10129",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10129,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10130",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10130,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10131",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10131,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mantinedev/mantine/pull/9328",
+      "repository": "mantinedev/mantine",
+      "number": 9328,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mantinedev/mantine/pull/9333",
+      "repository": "mantinedev/mantine",
+      "number": 9333,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2223",
+      "repository": "webpro-nl/knip",
+      "number": 2223,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2224",
+      "repository": "webpro-nl/knip",
+      "number": 2224,
+      "opened": "2026-10-26",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17295",
+      "repository": "Arize-ai/phoenix",
+      "number": 17295,
+      "opened": "2026-10-27",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/react-hook-form/pull/13950",
+      "repository": "react-hook-form/react-hook-form",
+      "number": 13950,
+      "opened": "2026-10-27",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2228",
+      "repository": "webpro-nl/knip",
+      "number": 2228,
+      "opened": "2026-10-27",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10155",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10155,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10156",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10156,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "maintainer-repair",
+      "flags": [
+        "maintainer-repair"
+      ],
+      "evidence": "https://github.com/assistant-ui/assistant-ui/commit/687ad1fa6dbfaa543b4df2ab50ef713ec1dd72c8",
+      "edit_class": "repair"
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10160",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10160,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "superseded",
+      "flags": [],
+      "evidence": "https://github.com/assistant-ui/assistant-ui/pull/10160#issuecomment-6461494607",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/langgenius/dify/pull/44921",
+      "repository": "langgenius/dify",
+      "number": 44921,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/react-hook-form/pull/13955",
+      "repository": "react-hook-form/react-hook-form",
+      "number": 13955,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "approach-declined",
+      "flags": [],
+      "evidence": "https://github.com/react-hook-form/react-hook-form/pull/13955#issuecomment-6482620725",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/react-hook-form/pull/13956",
+      "repository": "react-hook-form/react-hook-form",
+      "number": 13956,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/886",
+      "repository": "react-hook-form/resolvers",
+      "number": 886,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/tanstack/virtual/pull/1344",
+      "repository": "TanStack/virtual",
+      "number": 1344,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/unocss/unocss/pull/5400",
+      "repository": "unocss/unocss",
+      "number": 5400,
+      "opened": "2026-10-28",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17442",
+      "repository": "Arize-ai/phoenix",
+      "number": 17442,
+      "opened": "2026-10-30",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17444",
+      "repository": "Arize-ai/phoenix",
+      "number": 17444,
+      "opened": "2026-10-30",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mintplex-labs/anything-llm/pull/6901",
+      "repository": "Mintplex-Labs/anything-llm",
+      "number": 6901,
+      "opened": "2026-10-30",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mintplex-labs/anything-llm/pull/6902",
+      "repository": "Mintplex-Labs/anything-llm",
+      "number": 6902,
+      "opened": "2026-10-30",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/mintplex-labs/anything-llm/commit/a6f637040c257719575fcb87a81f4e0d32eda846",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/solidjs/solid/pull/4497",
+      "repository": "solidjs/solid",
+      "number": 4497,
+      "opened": "2026-10-30",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/tanstack/virtual/pull/1353",
+      "repository": "TanStack/virtual",
+      "number": 1353,
+      "opened": "2026-10-30",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/theofidry/awesome-mutation-testing/pull/103",
+      "repository": "theofidry/awesome-mutation-testing",
+      "number": 103,
+      "opened": "2026-10-30",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17491",
+      "repository": "Arize-ai/phoenix",
+      "number": 17491,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17493",
+      "repository": "Arize-ai/phoenix",
+      "number": 17493,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10245",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10245,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "withdrawn",
+      "flags": [],
+      "evidence": "https://github.com/assistant-ui/assistant-ui/pull/10245#issuecomment-6537821780",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10248",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10248,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10249",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10249,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update",
+        "maintainer-repair"
+      ],
+      "evidence": "https://github.com/assistant-ui/assistant-ui/commit/b7a709f2cb88c3bb75d00230120c9aed8ca9f02f",
+      "edit_class": "repair"
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10250",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10250,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": "https://github.com/assistant-ui/assistant-ui/commit/d2db9836c27f5b890e7e8b9f049cc259c8d89ec8",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10221",
+      "repository": "Effect-TS/effect",
+      "number": 10221,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/39c33a2ef8d54af999490f4bc5f072ae59d5ba40",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10233",
+      "repository": "Effect-TS/effect",
+      "number": 10233,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/7e13cebe622f0d60f27c1f147c15df990af7dfda",
+      "edit_class": "refactor"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10236",
+      "repository": "Effect-TS/effect",
+      "number": 10236,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/959c6222c04b9f8c5eaada165e780e84385538fc",
+      "edit_class": "scope"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10240",
+      "repository": "Effect-TS/effect",
+      "number": 10240,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/3030273c4d437ec0f715cce8c40f8b2a8dcdc3cd",
+      "edit_class": "refactor"
+    },
+    {
+      "url": "https://github.com/h3js/h3/pull/1624",
+      "repository": "h3js/h3",
+      "number": 1624,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "maintainer-repair",
+      "flags": [
+        "maintainer-repair"
+      ],
+      "evidence": "https://github.com/h3js/h3/commit/15604854ac270f829cccc0a980300fee19cb1536",
+      "edit_class": "repair"
+    },
+    {
+      "url": "https://github.com/meta/lexical/pull/9669",
+      "repository": "meta/lexical",
+      "number": 9669,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_unverified",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/meta/lexical/pull/9676",
+      "repository": "meta/lexical",
+      "number": 9676,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "in-review",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/meta/lexical/pull/9677",
+      "repository": "meta/lexical",
+      "number": 9677,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "in-review",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mintplex-labs/anything-llm/pull/6919",
+      "repository": "Mintplex-Labs/anything-llm",
+      "number": 6919,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mintplex-labs/anything-llm/pull/6926",
+      "repository": "Mintplex-Labs/anything-llm",
+      "number": 6926,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/mintplex-labs/anything-llm/commit/39fce0020990261ad2ac9992c7f6826d422e0867",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/mintplex-labs/anything-llm/pull/6928",
+      "repository": "Mintplex-Labs/anything-llm",
+      "number": 6928,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/postcss/postcss/pull/2182",
+      "repository": "postcss/postcss",
+      "number": 2182,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "no-real-user",
+      "flags": [],
+      "evidence": "https://github.com/postcss/postcss/pull/2182#issuecomment-6554919148",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/889",
+      "repository": "react-hook-form/resolvers",
+      "number": 889,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/rollup/rollup/pull/6620",
+      "repository": "rollup/rollup",
+      "number": 6620,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/solidjs/solid/pull/4531",
+      "repository": "solidjs/solid",
+      "number": 4531,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/sveltejs/kit/pull/17590",
+      "repository": "sveltejs/kit",
+      "number": 17590,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/tanstack/virtual/pull/1356",
+      "repository": "TanStack/virtual",
+      "number": 1356,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/vercel/ai/pull/24306",
+      "repository": "vercel/ai",
+      "number": 24306,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/vercel/ai/pull/24313",
+      "repository": "vercel/ai",
+      "number": 24313,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/vuejs/core/pull/16074",
+      "repository": "vuejs/core",
+      "number": 16074,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2265",
+      "repository": "webpro-nl/knip",
+      "number": 2265,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2266",
+      "repository": "webpro-nl/knip",
+      "number": 2266,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2267",
+      "repository": "webpro-nl/knip",
+      "number": 2267,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2269",
+      "repository": "webpro-nl/knip",
+      "number": 2269,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2270",
+      "repository": "webpro-nl/knip",
+      "number": 2270,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2271",
+      "repository": "webpro-nl/knip",
+      "number": 2271,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2272",
+      "repository": "webpro-nl/knip",
+      "number": 2272,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2273",
+      "repository": "webpro-nl/knip",
+      "number": 2273,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2274",
+      "repository": "webpro-nl/knip",
+      "number": 2274,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2275",
+      "repository": "webpro-nl/knip",
+      "number": 2275,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/withastro/starlight/pull/4314",
+      "repository": "withastro/starlight",
+      "number": 4314,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "no-real-user",
+      "flags": [],
+      "evidence": "https://github.com/withastro/starlight/issues/4313#issuecomment-6661017822",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/withastro/starlight/pull/4316",
+      "repository": "withastro/starlight",
+      "number": 4316,
+      "opened": "2026-10-31",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/react-hook-form/pull/13975",
+      "repository": "react-hook-form/react-hook-form",
+      "number": 13975,
+      "opened": "2026-11-01",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/vercel/ai/pull/24322",
+      "repository": "vercel/ai",
+      "number": 24322,
+      "opened": "2026-11-01",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10286",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10286,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10291",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10291,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10296",
+      "repository": "Effect-TS/effect",
+      "number": 10296,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/7740557afa9d25c2e4f9da1fecbc4a8e98192742",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10297",
+      "repository": "Effect-TS/effect",
+      "number": 10297,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/020f9fc9ae1b1c13ee89dd2a5e95fdf0f2d93f97",
+      "edit_class": "refactor"
+    },
+    {
+      "url": "https://github.com/react-hook-form/react-hook-form/pull/13978",
+      "repository": "react-hook-form/react-hook-form",
+      "number": 13978,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/890",
+      "repository": "react-hook-form/resolvers",
+      "number": 890,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/rollup/rollup/pull/6625",
+      "repository": "rollup/rollup",
+      "number": 6625,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/sveltejs/kit/pull/17616",
+      "repository": "sveltejs/kit",
+      "number": 17616,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/withastro/starlight/pull/4325",
+      "repository": "withastro/starlight",
+      "number": 4325,
+      "opened": "2026-11-02",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "works-as-designed",
+      "flags": [],
+      "evidence": "https://github.com/withastro/starlight/issues/4324#issuecomment-6601950484",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17560",
+      "repository": "Arize-ai/phoenix",
+      "number": 17560,
+      "opened": "2026-11-03",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10298",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10298,
+      "opened": "2026-11-03",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": "https://github.com/assistant-ui/assistant-ui/commit/92923cb7f23116f857fa3d1f59269402db22a1c2",
+      "edit_class": "bot"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10321",
+      "repository": "Effect-TS/effect",
+      "number": 10321,
+      "opened": "2026-11-03",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "maintainer-repair",
+      "flags": [
+        "maintainer-repair"
+      ],
+      "evidence": "https://github.com/effect-ts/effect/commit/a72b5eb8a47f9f5dd6eba6a9de6d52c7de3c4bed",
+      "edit_class": "repair"
+    },
+    {
+      "url": "https://github.com/mintplex-labs/anything-llm/pull/6957",
+      "repository": "Mintplex-Labs/anything-llm",
+      "number": 6957,
+      "opened": "2026-11-03",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "no-real-user",
+      "flags": [],
+      "evidence": "https://github.com/Mintplex-Labs/anything-llm/pull/6957#issuecomment-6615854329",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/891",
+      "repository": "react-hook-form/resolvers",
+      "number": 891,
+      "opened": "2026-11-03",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/tanstack/virtual/pull/1360",
+      "repository": "TanStack/virtual",
+      "number": 1360,
+      "opened": "2026-11-03",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "in-review",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2295",
+      "repository": "webpro-nl/knip",
+      "number": 2295,
+      "opened": "2026-11-03",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "change-requested",
+      "flags": [
+        "change-requested",
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/arize-ai/phoenix/pull/17603",
+      "repository": "Arize-ai/phoenix",
+      "number": 17603,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "in-review",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/assistant-ui/assistant-ui/pull/10312",
+      "repository": "assistant-ui/assistant-ui",
+      "number": 10312,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": "https://github.com/assistant-ui/assistant-ui/commit/42c38068365e19b78447fec6f755e7fea9a330ce",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10370",
+      "repository": "Effect-TS/effect",
+      "number": 10370,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/f0cf18604951ab3890aefaf8d0862aedda798cba",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10371",
+      "repository": "Effect-TS/effect",
+      "number": 10371,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/956f2a3489b694277363d7d45edbcec045e8a33a",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10373",
+      "repository": "Effect-TS/effect",
+      "number": 10373,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/33cc4a1b52716f9b61ce885939aa260caf6a88a5",
+      "edit_class": "style"
+    },
+    {
+      "url": "https://github.com/mantinedev/mantine/pull/9381",
+      "repository": "mantinedev/mantine",
+      "number": 9381,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/mantinedev/mantine/pull/9382",
+      "repository": "mantinedev/mantine",
+      "number": 9382,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "maintainer-repair",
+      "flags": [
+        "maintainer-repair"
+      ],
+      "evidence": "https://github.com/mantinedev/mantine/commit/601c334bafa3467340278ee4ccafe63ac18ea51b",
+      "edit_class": "repair"
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/892",
+      "repository": "react-hook-form/resolvers",
+      "number": 892,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/rollup/rollup/pull/6628",
+      "repository": "rollup/rollup",
+      "number": 6628,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/sveltejs/kit/pull/17643",
+      "repository": "sveltejs/kit",
+      "number": 17643,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "closed",
+      "reason": "unexplained",
+      "flags": [],
+      "evidence": "https://github.com/sveltejs/kit/pull/17643",
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/tanstack/virtual/pull/1368",
+      "repository": "TanStack/virtual",
+      "number": 1368,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2302",
+      "repository": "webpro-nl/knip",
+      "number": 2302,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2309",
+      "repository": "webpro-nl/knip",
+      "number": 2309,
+      "opened": "2026-11-04",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "maintainer-repair",
+      "flags": [
+        "maintainer-repair"
+      ],
+      "evidence": "https://github.com/webpro-nl/knip/commit/0f4ba71bd61cb146b9cfe31a89c12590ba9121cd",
+      "edit_class": "repair"
+    },
+    {
+      "url": "https://github.com/mantinedev/mantine/pull/9387",
+      "repository": "mantinedev/mantine",
+      "number": 9387,
+      "opened": "2026-11-05",
+      "in_cohort": true,
+      "bucket": "open",
+      "reason": "no-reply",
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/rollup/rollup/pull/6630",
+      "repository": "rollup/rollup",
+      "number": 6630,
+      "opened": "2026-11-05",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10419",
+      "repository": "Effect-TS/effect",
+      "number": 10419,
+      "opened": "2026-11-06",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/62f426b40e3190d69ab9ca36d58257b8cf7a182d",
+      "edit_class": "tests"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10432",
+      "repository": "Effect-TS/effect",
+      "number": 10432,
+      "opened": "2026-11-06",
+      "in_cohort": true,
+      "bucket": "merged_reworked",
+      "reason": "maintainer-repair",
+      "flags": [
+        "maintainer-repair"
+      ],
+      "evidence": "https://github.com/effect-ts/effect/commit/ff1d426fa66798d4383464455a226c8be29c0d6d",
+      "edit_class": "repair"
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/893",
+      "repository": "react-hook-form/resolvers",
+      "number": 893,
+      "opened": "2026-11-06",
+      "in_cohort": true,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/webpro-nl/knip/pull/2330",
+      "repository": "webpro-nl/knip",
+      "number": 2330,
+      "opened": "2026-11-08",
+      "in_cohort": false,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10534",
+      "repository": "Effect-TS/effect",
+      "number": 10534,
+      "opened": "2026-11-10",
+      "in_cohort": false,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/59d387962daa132f602d25d26215ecce46ae0dcf",
+      "edit_class": "refactor"
+    },
+    {
+      "url": "https://github.com/effect-ts/effect/pull/10552",
+      "repository": "Effect-TS/effect",
+      "number": 10552,
+      "opened": "2026-11-11",
+      "in_cohort": false,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": "https://github.com/effect-ts/effect/commit/88a109541b944a23f0fa33a83ff7ed59a55aa50a",
+      "edit_class": "refactor"
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/895",
+      "repository": "react-hook-form/resolvers",
+      "number": 895,
+      "opened": "2026-11-11",
+      "in_cohort": false,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    },
+    {
+      "url": "https://github.com/react-hook-form/resolvers/pull/898",
+      "repository": "react-hook-form/resolvers",
+      "number": 898,
+      "opened": "2026-11-12",
+      "in_cohort": false,
+      "bucket": "merged_no_rework",
+      "reason": null,
+      "flags": [],
+      "evidence": null,
+      "edit_class": null
+    }
+  ],
+  "reasons": {
+    "merged_reworked": [
+      {
+        "key": "author-update",
+        "n": 12,
+        "pull_requests": [
+          "https://github.com/arize-ai/phoenix/pull/17255",
+          "https://github.com/arize-ai/phoenix/pull/17283",
+          "https://github.com/arize-ai/phoenix/pull/17493",
+          "https://github.com/assistant-ui/assistant-ui/pull/10248",
+          "https://github.com/assistant-ui/assistant-ui/pull/10249",
+          "https://github.com/assistant-ui/assistant-ui/pull/10250",
+          "https://github.com/assistant-ui/assistant-ui/pull/10286",
+          "https://github.com/assistant-ui/assistant-ui/pull/10298",
+          "https://github.com/assistant-ui/assistant-ui/pull/10312",
+          "https://github.com/rollup/rollup/pull/6625",
+          "https://github.com/rollup/rollup/pull/6628",
+          "https://github.com/webpro-nl/knip/pull/2302"
+        ]
+      },
+      {
+        "key": "change-requested",
+        "n": 9,
+        "pull_requests": [
+          "https://github.com/webpro-nl/knip/pull/2212",
+          "https://github.com/webpro-nl/knip/pull/2223",
+          "https://github.com/webpro-nl/knip/pull/2224",
+          "https://github.com/webpro-nl/knip/pull/2265",
+          "https://github.com/webpro-nl/knip/pull/2266",
+          "https://github.com/webpro-nl/knip/pull/2274",
+          "https://github.com/webpro-nl/knip/pull/2295",
+          "https://github.com/withastro/starlight/pull/4299",
+          "https://github.com/withastro/starlight/pull/4316"
+        ]
+      },
+      {
+        "key": "maintainer-repair",
+        "n": 6,
+        "pull_requests": [
+          "https://github.com/assistant-ui/assistant-ui/pull/10156",
+          "https://github.com/effect-ts/effect/pull/10321",
+          "https://github.com/effect-ts/effect/pull/10432",
+          "https://github.com/h3js/h3/pull/1624",
+          "https://github.com/mantinedev/mantine/pull/9382",
+          "https://github.com/webpro-nl/knip/pull/2309"
+        ]
+      }
+    ],
+    "closed": [
+      {
+        "key": "no-real-user",
+        "n": 3,
+        "pull_requests": [
+          "https://github.com/mintplex-labs/anything-llm/pull/6957",
+          "https://github.com/postcss/postcss/pull/2182",
+          "https://github.com/withastro/starlight/pull/4314"
+        ]
+      },
+      {
+        "key": "approach-declined",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/react-hook-form/react-hook-form/pull/13955"
+        ]
+      },
+      {
+        "key": "duplicate",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/anomalyco/opencode/pull/58944"
+        ]
+      },
+      {
+        "key": "process",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/pydantic/pydantic-ai/pull/11243"
+        ]
+      },
+      {
+        "key": "superseded",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/assistant-ui/assistant-ui/pull/10160"
+        ]
+      },
+      {
+        "key": "unexplained",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/sveltejs/kit/pull/17643"
+        ]
+      },
+      {
+        "key": "withdrawn",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/assistant-ui/assistant-ui/pull/10245"
+        ]
+      },
+      {
+        "key": "works-as-designed",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/withastro/starlight/pull/4325"
+        ]
+      },
+      {
+        "key": "unclassified",
+        "n": 0,
+        "pull_requests": []
+      }
+    ],
+    "open": [
+      {
+        "key": "no-reply",
+        "n": 13,
+        "pull_requests": [
+          "https://github.com/arize-ai/phoenix/pull/17491",
+          "https://github.com/cline/cline/pull/15325",
+          "https://github.com/copilotkit/copilotkit/pull/7979",
+          "https://github.com/langchain-ai/langchainjs/pull/12033",
+          "https://github.com/langfuse/langfuse/pull/19340",
+          "https://github.com/langgenius/dify/pull/44921",
+          "https://github.com/mantinedev/mantine/pull/9387",
+          "https://github.com/oxc-project/oxc/pull/28150",
+          "https://github.com/sveltejs/kit/pull/17616",
+          "https://github.com/tambo-ai/tambo/pull/3041",
+          "https://github.com/tanstack/virtual/pull/1368",
+          "https://github.com/vercel/ai/pull/24322",
+          "https://github.com/vuejs/core/pull/16074"
+        ]
+      },
+      {
+        "key": "in-review",
+        "n": 4,
+        "pull_requests": [
+          "https://github.com/arize-ai/phoenix/pull/17603",
+          "https://github.com/meta/lexical/pull/9676",
+          "https://github.com/meta/lexical/pull/9677",
+          "https://github.com/tanstack/virtual/pull/1360"
+        ]
+      },
+      {
+        "key": "agreement",
+        "n": 1,
+        "pull_requests": [
+          "https://github.com/berriai/litellm/pull/48324"
+        ]
+      }
+    ]
+  },
+  "reconciliation": {
+    "status": "not_checked"
+  },
+  "improvements": [
+    {
+      "date": "2026-10-25",
+      "happened": "A project's automation closed a pull request because it referenced no existing issue.",
+      "change": "The policy scan reads a project's pull-request automation as well as its contributing guide, and the release gate checks a required issue reference before a pull request is opened.",
+      "moves": "Closed: process rule",
+      "links": [
+        {
+          "label": "pydantic-ai#11243",
+          "url": "https://github.com/pydantic/pydantic-ai/pull/11243"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-25",
+      "happened": "Another contributor opened the same fix shortly before the factory did.",
+      "change": "A fix is prepared before its issue is opened, and the pull request follows promptly, with a collision check after the push. Where a project wants discussion or a maintainer's answer first, the issue goes first and the factory waits. Since 2026-11-10, bug reports younger than 48 hours are left alone unless a maintainer invites a pull request.",
+      "moves": "Closed: someone else fixed it first",
+      "links": [
+        {
+          "label": "opencode#58944",
+          "url": "https://github.com/anomalyco/opencode/pull/58944"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-28",
+      "happened": "A fix patched the callers of a shared layer. The maintainer fixed the layer instead and kept the regression test.",
+      "change": "Review answers whether the change sits in the layer that owns the contract.",
+      "moves": "Closed: the maintainer fixed it another way",
+      "links": [
+        {
+          "label": "assistant-ui#10160",
+          "url": "https://github.com/assistant-ui/assistant-ui/pull/10160"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-31",
+      "happened": "A fix was right, but its generated test matrix was not how the project tests. It was changed on request and then merged.",
+      "change": "Each project's conventions are written on a note for that project, its repository card, which the implementer receives with the task.",
+      "moves": "Merged after a change request",
+      "links": [
+        {
+          "label": "knip#2265",
+          "url": "https://github.com/webpro-nl/knip/pull/2265"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-01",
+      "happened": "A maintainer closed a fix as a non-real issue: the input came from the factory probing the code, not from any project. Two later closures also cited the lack of a real-world case.",
+      "change": "A candidate names who hits the problem, with a source, and a failure path needs a real report or captured output. Since 2026-11-10 a separate agent decides build, propose or drop before any code is written.",
+      "moves": "Closed: no real-world case shown",
+      "links": [
+        {
+          "label": "postcss#2182",
+          "url": "https://github.com/postcss/postcss/pull/2182"
+        },
+        {
+          "label": "anything-llm#6957",
+          "url": "https://github.com/Mintplex-Labs/anything-llm/pull/6957"
+        },
+        {
+          "label": "starlight#4314",
+          "url": "https://github.com/withastro/starlight/pull/4314"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-01",
+      "happened": "First pull requests to new projects were going unanswered. By 2026-11-20 twelve projects had received one pull request each and merged none, and eight of those were still open with no reply from a person.",
+      "change": "Before a first pull request, the factory samples whether outsiders' pull requests get a human review within three days, unless a maintainer invited the work. Silent projects are stopped and not pinged.",
+      "moves": "Still open: no reply from a person",
+      "links": []
+    },
+    {
+      "date": "2026-11-11",
+      "happened": "On a fix that was never published, the author's checks passed and two rounds of independent review each found a different regression. The record is private; the link is the issue the fix was for.",
+      "change": "Review answers a fixed list of ways earlier changes failed (risk classes), each with a signed record of the command that checked it. After a second failed round the agent session running the shift takes the item over or shelves it; this item was shelved on 2026-11-11.",
+      "moves": "Merged without rework",
+      "links": [
+        {
+          "label": "rollup issue 6369",
+          "url": "https://github.com/rollup/rollup/issues/6369"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-20",
+      "happened": "Until this date the factory said its work was AI-written only where a project asked: 25 of the 129 pull-request descriptions carry such a statement and the other 104 carry none. A statement made only in a comment, as on postcss#2182, is not counted.",
+      "change": "New pull requests say they are automated and link to this repository. Projects that ban or restrict AI-generated contributions are not candidates.",
+      "moves": "Which projects are candidates",
+      "links": [
+        {
+          "label": "direction",
+          "path": "docs/direction.md"
+        }
+      ]
+    }
+  ],
   "input_quality": {
     "missing_files": 188,
     "invalid_pr_rows": 0,
-    "duplicate_pr_rows": 0
+    "duplicate_pr_rows": 0,
+    "invalid_outcome_rows": 0,
+    "invalid_improvements": 0
   },
   "population": {
     "prs": 129,
     "items": 192,
     "shift_summaries": 13,
+    "projects": 31,
+    "merged_projects": 19,
     "command_receipts": 497
   },
   "methodology": [
-    "Read-only snapshot of retained local evidence. No GitHub refresh is performed.",
-    "Coverage is eligible records with needed fields / the stated population, not proof of complete historical capture.",
-    "Partial means observed records only. Not tracked means the evidence cannot support the metric; missing values are never zero.",
-    "All weeks start Monday in UTC. Acceptance uses submission cohorts at their current saved outcome, not week-of-decision cohorts.",
-    "Weekly open counts are currently open PRs grouped by submission week, not historical week-end inventory.",
-    "Factory speed measures candidate-to-submission lead time and request-to-fix work, not waiting for maintainers. Response/merge latency and silent-thread share are intentionally excluded.",
-    "Zero event counts mean no events in retained records for that week. Input read errors and omitted dates can undercount."
+    "Read-only snapshot of retained local evidence. No network read or GitHub refresh is performed.",
+    "The cohort includes PRs opened on or before the date 14 days before the snapshot date (UTC), using exact cached creation timestamps or ledger submission timestamps to establish opening dates. Time of day does not affect membership; undated PRs are excluded and counted.",
+    "Drafts, closed, withdrawn and unanswered PRs remain in the cohort merge-rate denominator. Later merges move open rows to merged without changing cohort membership.",
+    "Rates need at least 20 eligible PRs. The 95% Wilson interval assumes independent PRs; the repository split shows their clustering. Weekly outcomes are counts, not trend claims.",
+    "Merged-without-rework uses only cohort merges with complete histories. Missing histories reduce coverage, never count as clean; unclassified maintainer edits count against the share.",
+    "Committer dates proxy ordinary pushes, not exact push times or batches. Force-push times are exact. Merge commits are excluded; removed commits or delayed pushes may be missed.",
+    "History stores self/other roles, not human/bot identity. Open response reasons use the saved ledger's human response flags. Open sub-states: awaiting-cla is agreement; otherwise no-reply requires silent status or explicit responded.maintainer=false and responded.community=false, with neither a true human response flag nor in-review/community-review status. A human response flag or in-review/community-review status is in-review; other submissions are unchecked. Source: factory/oss/followup.py:341-351,394-409; factory/oss/submit.py:336-339.",
+    "Daily activity uses Asia/Singapore event dates, not the UTC cohort dates. Openings use creation times; merges and unmerged closures use their own terminal times. Reopened PRs count only their current terminal outcome. Recorded replacement pairs are one daily contribution but remain separate PRs in the cohort.",
+    "Daily activity carries the last successful GitHub observation time. A failed refresh retains its counts and date window; missing event times remain outside daily rows but inside totals. Today is partial, and waiting time is not a KPI.",
+    "All weeks start Monday in UTC. Weekly outcomes reflect the current saved state of every PR opened that week, including recent PRs. Open counts are not historical week-end inventory.",
+    "Coverage is eligible records with needed fields / the stated population, not proof of complete historical capture. Missing values are never zero; input read errors and omitted dates can undercount.",
+    "Factory speed measures candidate-to-submission work, not waiting for maintainers. Maintainer response, approval and merge latency are not measured."
   ]
 }

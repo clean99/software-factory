@@ -48,6 +48,9 @@ class Workspace(unittest.TestCase):
         self.root = pathlib.Path(temp.name)
         self.ledger_path = self.root / "prs.json"
         write_json(self.ledger_path, [])
+        self.highlights = self.root / 'lines/oss/profile-highlights.json'
+        self.highlights.parent.mkdir(parents=True)
+        write_json(self.highlights, {'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': []})
         for mocker in (patch.dict(CONFIG, {"ledger_file": str(self.ledger_path), "repos_dir": str(self.root / "repos")}),
                        patch.object(clones, "ensure_repo", side_effect=AssertionError("unexpected clone restore")),
                        patch.object(sync, "ROOT", self.root),
@@ -400,6 +403,151 @@ class Mentions(Workspace):
 
 
 class Profile(Workspace):
+    def test_ordinals_include_teens(self):
+        self.assertEqual([profile_readme.ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21)],
+                         ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st'])
+
+    def test_header_reads_latest_rank_snapshot_and_orders_counts_then_labels(self):
+        self.group_file()
+        rows = [row(n, repo) for repo, count in (('alpha/core', 6), ('beta/kit', 5), ('meta/lexical', 5)) for n in range(1, count + 1)]
+        history = self.ledger_path.with_name('influence.jsonl')
+        latest = {'at': '2026-11-20T12:00:00Z', 'repos': [
+            {'repo': 'alpha/core', 'rank': 7, 'contributors_seen': 344},
+            {'repo': 'beta/kit', 'rank': 28, 'contributors_seen': 428}]}
+        history.write_text(json.dumps({'at': '2026-11-19', 'repos': []}) + '\n' + json.dumps(latest) + '\n\n')
+        settings = {'active_contributor': {'minimum_merged': 5, 'limit': 2}, 'selected': []}
+        write_json(self.highlights, settings)
+        text = profile_readme.portfolio(rows, 'fixture-owner')
+        self.assertIn(f"[Alpha]({profile_readme.merged_url('alpha/core', 'fixture-owner')}) (6 merged, 7th of 344 contributors)", text)
+        self.assertIn(f"[Beta]({profile_readme.merged_url('beta/kit', 'fixture-owner')}) (5, 28th of 428)", text)
+        self.assertNotIn('[Lexical]', text)
+        self.assertIn("Ranks are by commits in GitHub's contributor list on 2026-11-20.", text)
+        self.assertNotIn('2026-11-19', text)
+        self.assertNotIn('Selected pull requests', text)
+
+    def test_active_label_overrides_groups_without_changing_merged_block(self):
+        self.group_file()
+        rows = [row(n) for n in range(1, 6)]
+        write_json(self.highlights, {'active_contributor': {'minimum_merged': 5, 'limit': 6,
+                   'labels': {'alpha/core': 'Core project'}}, 'selected': []})
+        text = profile_readme.portfolio(rows, 'fixture-owner')
+        self.assertIn('**Active contributor to** [Core project]', text)
+        self.assertIn('- [Alpha]', profile_readme.render(rows))
+        for labels in ([], {'Alpha/Core': 'Core'}, {'alpha/core': ''}, {'alpha/core': 5}):
+            write_json(self.highlights, {'active_contributor': {'minimum_merged': 5, 'limit': 6, 'labels': labels}, 'selected': []})
+            with self.subTest(labels=labels), self.assertRaisesRegex(ValueError, 'labels must map'):
+                profile_readme.load_highlights()
+
+    def test_header_missing_rank_and_missing_influence_file_show_counts_only(self):
+        self.group_file()
+        rows = [row(n) for n in range(1, 6)] + [row(n, 'beta/kit') for n in range(1, 6)]
+        text = profile_readme.portfolio(rows, 'fixture-owner')
+        self.assertIn(') (5 merged) · [Beta]', text)
+        self.assertNotIn('Ranks are', text)
+        self.ledger_path.with_name('influence.jsonl').write_text(json.dumps({'at': '2026-11-20', 'repos': [
+            {'repo': 'alpha/core', 'rank': 2, 'contributors_seen': 20}, {'repo': 'beta/kit', 'rank': None, 'contributors_seen': 40}]}) + '\n')
+        text = profile_readme.portfolio(rows, 'fixture-owner')
+        self.assertIn('(5 merged, 2nd of 20 contributors)', text)
+        self.assertIn(') (5). Ranks are', text)
+        self.assertNotIn('None', text)
+
+    def test_header_omits_unqualified_projects_and_uses_fallback_labels(self):
+        self.group_file({'groups': []})
+        self.assertNotIn('Active contributor to', profile_readme.portfolio([row()], 'fixture-owner'))
+        text = profile_readme.portfolio([row(n) for n in range(1, 6)], 'fixture-owner')
+        self.assertIn('**Active contributor to** [core]', text)
+
+    def test_highlights_keep_file_order_and_require_merged_upstream_rows(self):
+        entries = [{'repo': 'beta/kit', 'number': 21, 'text': 'Decode inputs'},
+                   {'repo': 'alpha/core', 'number': 7, 'text': 'Keep results'}]
+        write_json(self.highlights, {'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': entries})
+        rows = [row(7), row(21, 'beta/kit')]
+        text = profile_readme.portfolio(rows, 'fixture-owner')
+        self.assertIn('- [kit#21](https://github.com/beta/kit/pull/21): Decode inputs\n- [core#7]', text)
+        for status in ('closed', 'submitted'):
+            with self.subTest(status=status), self.assertRaisesRegex(ValueError, r'beta/kit#21.*not a merged upstream'):
+                profile_readme.portfolio([row(7), row(21, 'beta/kit', status)], 'fixture-owner')
+        with self.assertRaisesRegex(ValueError, r'beta/kit#21'):
+            profile_readme.portfolio(rows, 'beta')
+
+    def test_highlights_file_reports_missing_and_invalid_entries(self):
+        self.highlights.unlink()
+        with self.assertRaisesRegex(ValueError, 'restore a valid highlights file'):
+            profile_readme.load_highlights()
+        for entry in ({'repo': 'bad', 'number': 1, 'text': 'Fix'}, {'repo': 'alpha/core', 'number': True, 'text': 'Fix'}):
+            write_json(self.highlights, {'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': [entry]})
+            with self.assertRaisesRegex(ValueError, 'entry'):
+                profile_readme.load_highlights()
+
+    def test_header_dates_ignore_owned_rows_and_omit_missing_dates(self):
+        rows = [row(1, submitted_at='2026-11-02T00:00:00Z'), row(2, submitted_at='2026-11-01T23:00:00Z'),
+                row(1, 'fixture-owner/own', submitted_at='2020-01-01T00:00:00Z')]
+        text = profile_readme.portfolio(rows, 'fixture-owner')
+        self.assertIn('Since 2026-11-01 this account', text)
+        self.assertIn('opened     2  since 2026-11-01', text)
+        self.assertIn('merged     2  in 1 projects', text)
+        text = profile_readme.portfolio([row(submitted_at=None)], 'fixture-owner')
+        self.assertIn('**All in on AI.** This account', text)
+        self.assertNotIn('Since ', text)
+
+    def test_details_wrapper_and_hand_text_survive_two_identical_renders(self):
+        self.group_file()
+        rows = [row()]
+        original = ('# Profile\n\n<details>\n<summary>Merged contributions by project</summary>\n\n'
+                    + profile_readme.START + '\n' + profile_readme.END + '\n\n</details>\n\nWriting stays.\n')
+        rendered = profile_readme.render_readme(original, rows)
+        self.assertEqual(profile_readme.render_readme(rendered, rows), rendered)
+        manual = rendered.split(profile_readme.PORTFOLIO_END, 1)[1]
+        self.assertLess(manual.index('<details>'), manual.index(profile_readme.START))
+        self.assertLess(manual.index(profile_readme.END), manual.index('</details>'))
+        self.assertTrue(rendered.endswith('\n\n</details>\n\nWriting stays.\n'))
+
+    def test_existing_portfolio_keeps_all_outside_marker_bytes(self):
+        self.group_file()
+        before = '# Personal heading\n\n  Keep this whitespace.\n\n'
+        between = '\n\nPersonal introduction.\n\n'
+        after = '\n\nWriting stays.\n'
+        original = (before + profile_readme.PORTFOLIO_START + '\nOld header\n' + profile_readme.PORTFOLIO_END
+                    + between + profile_readme.START + '\nOld list\n' + profile_readme.END + after)
+        rendered = profile_readme.render_readme(original, [row()])
+        self.assertEqual(rendered.split(profile_readme.PORTFOLIO_START)[0], before)
+        self.assertEqual(rendered.split(profile_readme.PORTFOLIO_END)[1].split(profile_readme.START)[0], between)
+        self.assertEqual(rendered.split(profile_readme.END)[1], after)
+        self.assertEqual(profile_readme.render_readme(rendered, [row()]), rendered)
+
+    def test_status_card_is_delegated_to_the_public_projection(self):
+        rows = [row()]
+        data = {'activity': {'days': []}}
+        card = 'software-factory\nsnapshot fixture\n'
+        with patch.object(profile_readme, 'portfolio_data', return_value=data) as projection, \
+                patch.object(profile_readme.metrics_site, 'status_card', return_value=card) as render_card:
+            text = profile_readme.portfolio(rows, 'fixture-owner')
+        projection.assert_called_once_with(rows, 'fixture-owner', generated_at=None)
+        render_card.assert_called_once_with(data)
+        self.assertIn('```text\n' + card + '```', text)
+
+    def test_activity_alt_uses_event_totals_and_retained_dates(self):
+        data = {'activity': {'days': [
+            {'date': '2026-11-19', 'opened': 1, 'merged': 2, 'closed_unmerged': 0},
+            {'date': '2026-11-20', 'opened': 0, 'merged': 1, 'closed_unmerged': 1}]}}
+        self.assertEqual(profile_readme.activity_alt(data),
+                         'Daily activity from 2026-11-19 to 2026-11-20, Asia/Singapore dates: '
+                         '1 pull requests opened, 3 merged and 1 closed without merge. Each event is dated by when it happened.')
+        self.assertEqual(profile_readme.activity_alt({}), 'Daily activity: no dated events in this snapshot.')
+
+    def test_profile_projection_matches_public_metrics_with_saved_history(self):
+        from factory.core import metrics
+
+        rows = [row(1), row(1), row(2, status='closed')]
+        history = {'schema': 1, 'prs': {}}
+        outcomes = {'schema': 2, 'closures': {}, 'maintainer_edits': {}, 'replacements': []}
+        write_json(self.ledger_path.with_name('pr-history.json'), history)
+        write_json(self.ledger_path.with_name('pr-outcomes.json'), outcomes)
+        expected = metrics.compute({'prs': rows, 'pr_history': history, 'outcomes': outcomes}, CONFIG, AT)
+        actual = profile_readme.portfolio_data(rows, CONFIG['github_user'], generated_at=AT)
+        self.assertEqual(actual, expected)
+        self.assertEqual(actual['metrics']['prs_opened']['value'], 2)
+
     def test_rendered_block_is_byte_identical_for_single_and_joined_aggregate_links(self):
         data = {"groups": [{"title": "Merged upstream", "repos": [
             {"repo": "alpha/core", "label": "Core", "blurb": "Shared fix"},

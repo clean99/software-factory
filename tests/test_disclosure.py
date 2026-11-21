@@ -218,18 +218,26 @@ class Body(unittest.TestCase):
 
 
 class Profile(unittest.TestCase):
+    def setUp(self):
+        mocker = patch.object(profile_readme, 'load_highlights', return_value={
+            'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': []})
+        mocker.start()
+        self.addCleanup(mocker.stop)
+
     def test_header_uses_config_deduplicates_merges_and_preserves_groups(self):
-        rows = [{"repo": "upstream/parser", "number": 7, "status": "merged"}] * 2
-        rows += [{"repo": "owner/tool", "number": 1, "status": "merged"},
-                 {"repo": "upstream/parser", "number": 8, "status": "submitted"}]
+        rows = [{"repo": "upstream/parser", "number": 7, "status": "merged",
+                 "url": "https://github.com/upstream/parser/pull/7"}] * 2
+        rows += [{"repo": "owner/tool", "number": 1, "status": "merged", "url": "https://github.com/owner/tool/pull/1"},
+                 {"repo": "upstream/parser", "number": 8, "status": "submitted", "url": "https://github.com/upstream/parser/pull/8"}]
         groups = {"groups": [{"title": "Parsers", "repos": [{"repo": "upstream/parser", "blurb": "Keep results"}]}]}
         with patch.dict(CONFIG, public=PORTFOLIO):
             body = profile_readme.render_readme("# Work\n\nHand-maintained projects.\n", rows, groups, "owner")
             again = profile_readme.render_readme(body, rows, groups, "owner")
         self.assertEqual(body, again)
         self.assertTrue(body.startswith(profile_readme.PORTFOLIO_START))
-        self.assertIn("This account is automated", body)
-        self.assertIn("**1 merged upstream pull requests**", body)
+        self.assertIn("**All in on AI.** This account's upstream contributions are run by", body)
+        self.assertIn('opened     2  since n/a', body)
+        self.assertIn('merged     1  in 1 projects', body)
         self.assertIn(PORTFOLIO["dashboard_url"], body)
         self.assertIn("https://github.com/" + PORTFOLIO["repository"], body)
         self.assertIn("**Parsers**", body)

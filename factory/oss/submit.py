@@ -67,8 +67,12 @@ def flood_check(repo, me):
         problems.append(f"{len(exploring)} open PRs in repos without a merge yet (cap {limits['max_open_prs_total']})")
     daily_cap = limits.get("max_new_prs_per_day")
     if daily_cap is not None:
-        today = dt.date.today()
-        sent_today = [r for r in ledger.load() if r.get("submitted_at") and parse_iso(r["submitted_at"]).astimezone().date() == today]
+        from zoneinfo import ZoneInfo
+        from factory.core.metrics import ACTIVITY_ZONE
+
+        zone = ZoneInfo(ACTIVITY_ZONE)
+        today = now().astimezone(zone).date()
+        sent_today = [r for r in ledger.load() if r.get("submitted_at") and parse_iso(r["submitted_at"]).astimezone(zone).date() == today]
         if len(sent_today) >= daily_cap:
             problems.append(f"{len(sent_today)} PRs opened today (cap {daily_cap})")
     return problems

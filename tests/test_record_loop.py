@@ -39,6 +39,11 @@ class RecordLoop(unittest.TestCase):
         self.ledger.parent.mkdir()
         (self.root / "runs").mkdir()
         write_json(self.ledger, [])
+        # A saved history attempt at the fixed clock keeps the close-of-session refresh out of these merge-record tests.
+        write_json(self.ledger.with_name("pr-history.json"), {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": AT.isoformat()}})
+        highlights = self.root / 'lines/oss/profile-highlights.json'
+        highlights.parent.mkdir(parents=True)
+        write_json(highlights, {'active_contributor': {'minimum_merged': 5, 'limit': 6}, 'selected': []})
         plan = {key: [] for key in ("ship_ready", "needs_coordinator_review", "fix_round", "stale_reviews",
                                     "held", "unreviewed", "missing_clone", "errors", "repo_slots")}
         patches = [patch.dict(CONFIG, {"ledger_file": str(self.ledger), "runs_dir": str(self.root / "runs"),
@@ -149,7 +154,7 @@ class RecordLoop(unittest.TestCase):
         text = path.read_text()
         header, marker, remainder = text.partition(profile_readme.PORTFOLIO_END + "\n\n")
         self.assertTrue(header.startswith(profile_readme.PORTFOLIO_START + "\n"))
-        self.assertIn("This account is automated", header)
+        self.assertIn("**All in on AI.** Since 2026-11-01 this account's upstream contributions are run by", header)
         self.assertEqual(marker, profile_readme.PORTFOLIO_END + "\n\n")
         self.assertTrue(remainder.startswith(manual))
         self.assertEqual(text.count(manual), 1)
@@ -203,7 +208,7 @@ class RecordLoop(unittest.TestCase):
         rows = [self.row(7), self.row(21, "beta/kit")]
         write_json(self.ledger, rows)
         groups = self.root / "lines/oss/profile-groups.json"
-        groups.parent.mkdir(parents=True)
+        groups.parent.mkdir(parents=True, exist_ok=True)
         write_json(groups, {"groups": [{"title": "Merged", "repos": [
             {"repo": "alpha/core", "blurb": "Manual entry", "outside_block": True},
             {"repo": "beta/kit", "blurb": "Restore supported inputs"}]}]})

@@ -20,6 +20,7 @@ from support import setup_module
 
 from factory import cli
 from factory.core import commit, lessons, nextaction, publication, shiftlock, timeline, verdicts
+from factory.oss import profile_readme
 from factory.util import CONFIG, CommandError, Item, read_json, run, write_json
 
 AT = dt.datetime(2026, 11, 10, 17, tzinfo=dt.timezone.utc)
@@ -85,6 +86,8 @@ class NextActions(unittest.TestCase):
         self.runs.mkdir()
         write_json(self.ledger, [])
         self.clock = AT
+        write_json(self.ledger.with_name("pr-history.json"), {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat()}})
+        self.header_projection = patch.object(nextaction, "profile_header_action", return_value=None)
         self.plan = {key: [] for key in ("ship_ready", "needs_coordinator_review", "fix_round", "stale_reviews", "held",
                                         "unreviewed", "missing_clone", "errors", "repo_slots", "needs_value_review",
                                         "needs_implementation", "proposal_ready")}
@@ -102,10 +105,18 @@ class NextActions(unittest.TestCase):
                 return self.exploration
             return self.lanes + self.exploration
 
-        patches = [patch.dict(CONFIG, {"runs_dir": str(self.runs), "ledger_file": str(self.ledger), "repos_dir": str(self.root / "repos"),
+        def local_run(argv, **kwargs):
+            if argv[3:] == ["show", "refs/remotes/origin/main:README.md"]:
+                return run(argv, **kwargs)
+            return SimpleNamespace(returncode=1, stdout="") if "check-ignore" in argv else SimpleNamespace(stdout=self.status)
+
+        patches = [self.header_projection,
+                   patch.dict(CONFIG, {"runs_dir": str(self.runs), "ledger_file": str(self.ledger), "repos_dir": str(self.root / "repos"),
                                       "limits": {**CONFIG["limits"], "max_hunts_per_shift": 2, "review_budget_minutes": 120}}),
                    patch.object(nextaction, "ROOT", self.root), patch.object(shiftlock, "ROOT", self.root),
                    patch.object(nextaction.clean, "ROOT", self.root),
+                   patch.object(profile_readme, "ROOT", self.root),
+                   patch.object(profile_readme, "gh_json", side_effect=AssertionError("no profile network lookup")),
                    patch.object(nextaction, "now", side_effect=lambda: self.clock),
                    patch.object(shiftlock, "now", side_effect=lambda: self.clock),
                    patch.object(timeline, "now", side_effect=lambda: self.clock),
@@ -117,8 +128,7 @@ class NextActions(unittest.TestCase):
                    patch.object(nextaction.followup, "events", side_effect=lambda: self.live_events),
                    patch.object(nextaction.followup, "run", side_effect=AssertionError("no implicit sweep")),
                    patch.object(nextaction.followup, "waiting_issues", side_effect=AssertionError("no implicit issue lookup")),
-                   patch.object(nextaction, "run", side_effect=lambda argv, **kw: SimpleNamespace(returncode=1, stdout="")
-                                if "check-ignore" in argv else SimpleNamespace(stdout=self.status)),
+                   patch.object(nextaction, "run", side_effect=local_run),
                    patch.object(Item, "head_sha", lambda item: item.meta.get("head", HEAD)),
                    patch.object(verdicts, "bound", lambda item, head, reviewed: bool(reviewed and head.startswith(reviewed)))]
         for mocker in patches:
@@ -1107,7 +1117,8 @@ class NextActions(unittest.TestCase):
         write_json(self.ledger, [{**row, "records": receipts}])
         self.assertEqual(self.actions("records"), [])
         self.clock += dt.timedelta(hours=12)
-        self.assertEqual([a["target"] for a in self.actions("records")], ["notebook"])
+        self.assertEqual([a["target"] for a in self.actions("records")], ["notebook", "history"])
+        write_json(self.ledger.with_name("pr-history.json"), {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat()}})
         receipts["notebook"] = real
         write_json(self.ledger, [{**row, "records": receipts}])
         self.assertEqual(self.actions("records"), [])
@@ -1132,6 +1143,428 @@ class NextActions(unittest.TestCase):
             self.assertEqual(captures[0], expected)
             deferrals = [args for args in marks if "--deferred" in args]
             self.assertEqual([args[4] for args in deferrals], [row["url"] for row in rows] if dest == "notebook" else [])
+
+    def test_history_refresh_when_never_attempted_or_stale(self):
+        path = self.ledger.with_name("pr-history.json")
+        for attempt in (None, self.clock - dt.timedelta(hours=13)):
+            with self.subTest(attempt=attempt):
+                if attempt is None:
+                    path.unlink()
+                else:
+                    write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": attempt.isoformat()}})
+                before = path.read_bytes() if path.exists() else None
+                with patch.object(nextaction, "run", side_effect=AssertionError("no subprocess for history projection")):
+                    entry = nextaction.history_action(self.clock)
+                stamp = attempt.isoformat() if attempt else None
+                self.assertEqual(entry["id"], nextaction.identifier("records", "history", stamp))
+                self.assertEqual((entry["kind"], entry["target"], entry["role"]), ("records", "history", "coordinator"))
+                self.assertEqual(entry["title"], "Refresh saved pull request history")
+                self.assertTrue(entry["observation"])
+                self.assertIn(stamp or "never", entry["why"])
+                self.assertIn("public counts, daily activity and the profile header", entry["why"])
+                self.assertEqual(entry["commands"], [
+                    "bin/factory metrics history --cache ledger/pr-history.json",
+                    "bin/factory commit -m 'Refresh saved pull request history' --path ledger/pr-history.json",
+                    "Exit 3 from the refresh means GitHub could not be read completely: the cache keeps the last successful counts and records the attempt, so commit it either way."])
+                self.assertEqual(entry["done_when"], "The saved GitHub observation was attempted within the last twelve hours.")
+                self.assertEqual(before, path.read_bytes() if path.exists() else None)
+                self.assertEqual(self.actions("records"), [entry])
+
+    def test_history_invalid_attempt_time_counts_as_never_attempted(self):
+        path = self.ledger.with_name("pr-history.json")
+        cases = [{}, {"reconciliation": None}, {"reconciliation": []}]
+        cases += [{"reconciliation": {"checked_at": stamp}} for stamp in (None, 123, "invalid", "2026-11-10", "2026-11-10T17:00:00")]
+        for extra in cases:
+            with self.subTest(extra=extra):
+                write_json(path, {"schema_version": 1, "prs": {}, **extra})
+                before = path.read_bytes()
+                self.assertEqual(nextaction.history_action(self.clock)["id"], nextaction.identifier("records", "history", None))
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_unreadable_history_cache_is_quarantined_and_restored_before_refresh(self):
+        self.profile()
+        path = self.ledger.with_name("pr-history.json")
+        stamp = self.clock.astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        for content in (b"{", b"\xff", b"null", b"[]", b"{}", b'{"schema_version": 2, "prs": {}}', b'{"schema_version": 1, "prs": []}'):
+            with self.subTest(content=content):
+                path.write_bytes(content)
+                with patch.object(profile_readme, "portfolio", side_effect=AssertionError("header waits for a readable history")):
+                    entry, = self.actions("repair")
+                    self.assertEqual(self.actions("records"), [])
+                self.assertEqual(entry["id"], nextaction.identifier("repair", "history-cache", ["unreadable", "ledger/pr-history.json"]))
+                self.assertEqual(entry["title"], "Repair the saved pull request history")
+                copy = self.root / f"workspace/quarantine/pr-history-{stamp}.json"
+                self.assertEqual(entry["commands"][:3], [
+                    shlex.join(["mkdir", "-p", str(copy.parent)]),
+                    shlex.join(["cp", "ledger/pr-history.json", str(copy)]),
+                    "git restore --source=HEAD -- ledger/pr-history.json"])
+                self.assertEqual(path.read_bytes(), content)
+        path.unlink()
+        self.assertEqual([entry["target"] for entry in self.actions("records")], ["history"])
+        self.assertEqual(self.actions("repair"), [])
+
+    def test_history_outside_the_ledger_directory_asks_for_a_location_repair(self):
+        ledger = self.root / "data/prs.json"
+        ledger.parent.mkdir()
+        write_json(ledger, [])
+        with patch.dict(CONFIG, {"ledger_file": str(ledger)}):
+            entry = nextaction.history_action(self.clock)
+        self.assertEqual((entry["kind"], entry["target"]), ("repair", "history-cache"))
+        self.assertEqual(entry["title"], "Repair the saved history location")
+        self.assertIn(str(ledger.with_name("pr-history.json")), entry["why"])
+        self.assertNotIn("bin/factory metrics history", " ".join(entry["commands"]))
+
+    def test_history_timestamp_overflow_keeps_pending_ci_in_cli(self):
+        path = self.ledger.with_name("pr-history.json")
+        self.event("ci-failing", detail={"jobs": [{"name": "test"}]})
+        for stamp in ("0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-14:00"):
+            with self.subTest(stamp=stamp):
+                write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": stamp}})
+                before = path.read_bytes()
+                code, output = self.run_cli("next", "--all", "--json")
+                self.assertEqual(code, 0)
+                entries = json.loads(output)
+                self.assertIn("ci-triage", [entry["kind"] for entry in entries])
+                history, = [entry for entry in entries if entry["target"] == "history"]
+                self.assertEqual(history["id"], nextaction.identifier("records", "history", None))
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_history_recent_attempts_include_failures_and_use_exact_timestamps(self):
+        path = self.ledger.with_name("pr-history.json")
+        for hours, error in ((11, None), (1, "transport_error")):
+            with self.subTest(hours=hours, error=error):
+                attempt = self.clock - dt.timedelta(hours=hours)
+                check = {"checked_at": attempt.astimezone(nextaction.ZONE).isoformat(),
+                         "activity": {"checked_at": (self.clock - dt.timedelta(days=2)).isoformat()}}
+                if error:
+                    check["error"] = error
+                write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": check})
+                self.assertIsNone(nextaction.history_action(self.clock))
+                self.assertEqual(self.actions("records"), [])
+        boundary = self.clock - dt.timedelta(hours=12)
+        write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": (boundary + dt.timedelta(microseconds=1)).isoformat()}})
+        self.assertIsNone(nextaction.history_action(self.clock))
+        write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": boundary.isoformat()}})
+        self.assertIsNotNone(nextaction.history_action(self.clock))
+
+    def test_history_id_changes_only_with_attempt_time(self):
+        path = self.ledger.with_name("pr-history.json")
+        attempt = self.clock - dt.timedelta(hours=13)
+        check = {"checked_at": attempt.isoformat()}
+        write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": check})
+        first = nextaction.history_action(self.clock)
+        self.clock += dt.timedelta(hours=1)
+        self.assertEqual(nextaction.history_action(self.clock)["id"], first["id"])
+        write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": {**check, "error": "transport_error"}})
+        self.assertEqual(nextaction.history_action(self.clock)["id"], first["id"])
+        write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": (attempt + dt.timedelta(microseconds=1)).isoformat()}})
+        second = nextaction.history_action(self.clock)
+        self.assertNotEqual(second["id"], first["id"])
+        self.assertEqual(nextaction.history_action(self.clock)["id"], second["id"])
+
+    def test_history_deferral_lasts_twelve_hours_without_unlocking_header(self):
+        self.profile()
+        self.ledger.with_name("pr-history.json").unlink()
+        entry, = self.actions("records")
+        self.assertEqual(entry["target"], "history")
+        nextaction.acknowledge(entry["id"], "Refresh cannot start while the cache destination is read-only")
+        self.clock += dt.timedelta(hours=11)
+        self.assertEqual(self.actions("records"), [])
+        self.clock += dt.timedelta(hours=1)
+        self.assertEqual(self.actions("records"), [entry])
+
+    def profile_git(self, profile, *args):
+        return run(["git", "-C", str(profile.parent), "-c", "user.name=Fixture",
+                    "-c", "user.email=fixture@example.invalid", *args]).stdout.strip()
+
+    def save_profile(self, profile, published=True):
+        self.profile_git(profile, "add", "--", "README.md")
+        self.profile_git(profile, "commit", "--allow-empty", "-m", "Update profile fixture")
+        head = self.profile_git(profile, "rev-parse", "HEAD")
+        if published:
+            self.profile_git(profile, "update-ref", "refs/remotes/origin/main", head)
+        return head
+
+    def profile(self):
+        self.header_projection.stop()
+        path = pathlib.Path(CONFIG["repos_dir"]) / (CONFIG["github_user"] + "__" + CONFIG["github_user"]) / "README.md"
+        path.parent.mkdir(parents=True)
+        self.profile_git(path, "init", "-b", "main")
+        path.write_text("# Manual\n" + profile_readme.PORTFOLIO_START + "\nstale header\n" + profile_readme.PORTFOLIO_END + "\n")
+        self.save_profile(path)
+        settings = self.root / "lines/oss/profile-highlights.json"
+        settings.parent.mkdir(parents=True)
+        write_json(settings, {"active_contributor": {"minimum_merged": 5, "limit": 6}, "selected": []})
+        write_json(self.ledger.with_name("pr-history.json"), {
+            "schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat()}})
+        return path
+
+    def test_profile_header_mismatch_prints_one_refresh_without_privacy_config(self):
+        with patch.dict(CONFIG, {**CONFIG, "repos_dir": str(self.root / "repos with spaces")}, clear=True):
+            del CONFIG["private_terms"]
+            del CONFIG["git_email_previous"]
+            profile = self.profile()
+            before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+            with patch.object(profile_readme, "check", side_effect=AssertionError("no privacy check")):
+                entry, = self.actions("records")
+            self.assertEqual((entry["kind"], entry["target"], entry["role"]), ("records", "profile-header", "record"))
+            self.assertEqual(entry["commands"], [
+                f"git -C {shlex.quote(str(profile.parent))} pull --ff-only",
+                f"bin/factory sync profile --readme {shlex.quote(str(profile))} --write",
+                f"bin/factory profile-check --readme {shlex.quote(str(profile))}",
+                'Scan, commit and push the profile repository as docs/repairs.md#profile-repository describes with commit message "Refresh profile header"; verify the remote commit.'])
+            self.assertEqual(entry["done_when"], "The profile checkout's origin/main README carries the generator's header for the current retained snapshot.")
+            self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
+
+    def test_profile_header_closes_only_after_origin_main_moves(self):
+        profile = self.profile()
+        first, = self.actions("records")
+        text = profile_readme.render_readme(profile.read_text(), [], {"groups": []}, CONFIG["github_user"])
+        profile.write_text(text)
+        self.assertEqual(self.actions("records"), [first])
+        head = self.save_profile(profile, published=False)
+        self.assertEqual(self.actions("records"), [first])
+        self.profile_git(profile, "update-ref", "refs/remotes/origin/main", head)
+        self.assertEqual(self.actions("records"), [])
+        self.clock += dt.timedelta(hours=11)
+        self.assertEqual(self.actions("records"), [])
+        self.clock += dt.timedelta(hours=13)
+        self.assertIsNone(nextaction.profile_header_action(profile))
+        self.assertEqual([entry["target"] for entry in self.actions("records")], ["history"])
+        write_json(self.ledger.with_name("pr-history.json"), {
+            "schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat()}})
+        entry, = self.actions("records")
+        self.assertEqual(entry["target"], "profile-header")
+        self.assertNotEqual(entry["id"], first["id"])
+
+    def test_profile_header_comparison_preserves_whitespace_like_profile_check(self):
+        profile = self.profile()
+        intro = "\n" + profile_readme.portfolio([], CONFIG["github_user"])
+        with patch.object(profile_readme, "load_groups", return_value={"groups": []}):
+            for content in (intro, intro.lstrip("\n"), intro + "\n", intro + " "):
+                with self.subTest(content=content[-20:]):
+                    text = "# Manual\n" + profile_readme.PORTFOLIO_START + content + profile_readme.PORTFOLIO_END + "\n"
+                    profile.write_text(text)
+                    self.save_profile(profile)
+                    expected = bool(profile_readme.check(text, CONFIG["github_user"])["portfolio_mismatch"])
+                    self.assertEqual(bool(self.actions("records")), expected)
+
+    def test_profile_merge_receipts_suppress_a_separate_header_refresh(self):
+        self.profile()
+        self.row(status="merged", merged_at=self.clock.isoformat())
+        with patch.object(profile_readme, "portfolio", side_effect=AssertionError("merge action already rewrites header")):
+            self.assertEqual([entry["target"] for entry in self.actions("records")], ["profile", "teach", "notebook"])
+
+    def test_profile_header_refresh_ignores_missing_or_malformed_published_markers(self):
+        profile = self.profile()
+        start, end = profile_readme.PORTFOLIO_START, profile_readme.PORTFOLIO_END
+        for text in ("# Manual\n", start, end, end + start, start + start + end):
+            with self.subTest(text=text), patch.object(profile_readme, "portfolio", side_effect=AssertionError("no valid header")):
+                profile.write_text(text)
+                self.save_profile(profile)
+                self.assertEqual(self.actions("records"), [])
+                self.assertEqual(self.actions("repair"), [])
+
+    def test_missing_profile_checkout_prints_restore_command(self):
+        self.header_projection.stop()
+        profile = pathlib.Path(CONFIG["repos_dir"]) / (CONFIG["github_user"] + "__" + CONFIG["github_user"]) / "README.md"
+        with patch.object(nextaction, "run", side_effect=AssertionError("restoration runs only when requested")):
+            entry = nextaction.profile_header_action(profile)
+        self.assertEqual(entry["id"], nextaction.identifier("records", "profile-header", "checkout"))
+        self.assertEqual(entry["title"], "Restore the profile checkout")
+        self.assertEqual(entry["commands"], [f"bin/factory sync profile --readme {shlex.quote(str(profile))}"])
+        self.assertEqual(entry["done_when"], "The profile checkout exists with an origin/main README.")
+        self.assertEqual(self.actions("records"), [entry])
+        profile.parent.mkdir(parents=True)
+        profile.write_text("A directory without git metadata\n")
+        repair, = self.actions("repair")
+        self.assertEqual(self.actions("records"), [])
+        self.assertEqual(repair["id"], nextaction.identifier("repair", "profile-checkout", str(profile.parent)))
+        stamp = self.clock.astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        moved = self.root / f"workspace/quarantine/{profile.parent.name}-{stamp}"
+        self.assertEqual(repair["commands"], [shlex.join(["mkdir", "-p", str(moved.parent)]), shlex.join(["mv", str(profile.parent), str(moved)]),
+                                              f"bin/factory sync profile --readme {shlex.quote(str(profile))}"])
+        self.assertTrue(profile.exists())
+
+    def test_missing_working_readme_does_not_hide_the_published_header(self):
+        profile = self.profile()
+        entry, = self.actions("records")
+        profile.unlink()
+        self.assertEqual(self.actions("records"), [entry])
+        self.profile_git(profile, "add", "--", "README.md")
+        self.profile_git(profile, "commit", "-m", "Remove profile fixture")
+        self.profile_git(profile, "update-ref", "refs/remotes/origin/main", "HEAD")
+        self.assertEqual(self.actions("records"), [])
+        self.assertEqual(self.actions("repair"), [])
+
+    def test_profile_header_refresh_ignores_unreadable_ref_or_invalid_utf8(self):
+        profile = self.profile()
+        self.profile_git(profile, "update-ref", "-d", "refs/remotes/origin/main")
+        self.assertEqual(self.actions("records"), [])
+        self.assertEqual(self.actions("repair"), [])
+        profile.write_bytes(b"\xff")
+        self.save_profile(profile)
+        self.assertEqual(self.actions("records"), [])
+        self.assertEqual(self.actions("repair"), [])
+        with patch.object(nextaction, "run", side_effect=PermissionError("git objects are not readable")):
+            self.assertIsNone(nextaction.profile_header_action(profile))
+
+    def test_profile_header_partial_clone_read_does_not_fetch_or_write_objects(self):
+        self.header_projection.stop()
+        profile = pathlib.Path(CONFIG["repos_dir"]) / (CONFIG["github_user"] + "__" + CONFIG["github_user"]) / "README.md"
+        seed = self.root / "seed/README.md"
+        seed.parent.mkdir()
+        self.profile_git(seed, "init", "-b", "main")
+        self.profile_git(seed, "config", "uploadpack.allowFilter", "true")
+        for content in ("first", "second"):
+            seed.write_text(profile_readme.PORTFOLIO_START + "\n" + content + "\n" + profile_readme.PORTFOLIO_END)
+            self.save_profile(seed, published=False)
+            if content == "first":
+                run(["git", "clone", "--filter=blob:none", seed.parent.as_uri(), str(profile.parent)])
+            else:
+                self.profile_git(profile, "fetch", "origin")
+        blob = self.profile_git(seed, "rev-parse", "HEAD:README.md")
+        self.assertIn("?" + blob, self.profile_git(profile, "rev-list", "--objects", "--missing=print", "origin/main"))
+        before = {p: p.read_bytes() for p in profile.parent.rglob("*") if p.is_file()}
+        trace = self.root / "profile-read.trace"
+        with patch.dict(os.environ, {"GIT_TRACE": str(trace)}):
+            self.assertEqual(self.actions("records"), [])
+        self.assertNotIn("fetch", trace.read_text())
+        self.assertEqual(before, {p: p.read_bytes() for p in profile.parent.rglob("*") if p.is_file()})
+        self.assertIn("?" + blob, self.profile_git(profile, "rev-list", "--objects", "--missing=print", "origin/main"))
+
+    def test_profile_header_read_has_a_timeout_and_ignores_expiration(self):
+        profile = self.profile()
+        with patch("factory.util.subprocess.run", side_effect=subprocess.TimeoutExpired("git show", 5)) as process:
+            self.assertIsNone(nextaction.profile_header_action(profile))
+        self.assertEqual(process.call_args.kwargs["timeout"], 5)
+        self.assertEqual(process.call_args.kwargs["env"]["GIT_NO_LAZY_FETCH"], "1")
+
+    def test_profile_header_id_tracks_expected_content_not_clock_or_manual_edits(self):
+        profile = self.profile()
+        first, = self.actions("records")
+        self.assertEqual(self.actions("records")[0]["id"], first["id"])
+        profile.write_text("# Different manual text\n" + profile.read_text().replace("stale header", "other stale header"))
+        self.clock += dt.timedelta(hours=1)
+        self.assertEqual(self.actions("records")[0]["id"], first["id"])
+        self.clock += dt.timedelta(hours=23)
+        self.assertEqual(nextaction.profile_header_action(profile)["id"], first["id"])
+        write_json(self.ledger.with_name("pr-history.json"), {
+            "schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat()}})
+        second, = self.actions("records")
+        self.assertNotEqual(second["id"], first["id"])
+        self.assertEqual(self.actions("records")[0]["id"], second["id"])
+
+    def test_profile_header_follows_merge_records_ci_review_and_ship(self):
+        self.profile()
+        receipt = {"at": self.clock.isoformat(), "ref": "commit", "sha256": "1" * 64}
+        self.row(status="merged", records={"profile": receipt})
+        self.review(self.item("review", "needs_coordinator_review"))
+        self.item("ready", "ship_ready")
+        self.event("ci-failing", {"url": "https://github.com/o/r/pull/2", "repo": "o/r", "number": 2},
+                   {"jobs": [{"name": "test"}]})
+        entries = self.actions()
+        self.assertEqual([entry["kind"] for entry in entries], [
+            "ci-triage", "coordinator-review", "ship", "records", "records", "records", "report"])
+        self.assertEqual([entry["target"] for entry in entries if entry["kind"] == "records"], ["teach", "notebook", "profile-header"])
+        write_json(self.ledger, [{**read_json(self.ledger)[0], "records": {"profile": {"unverified": True}}}])
+        self.assertEqual([entry["target"] for entry in self.actions("records")], ["teach", "notebook", "audit", "profile-header"])
+
+    def test_profile_header_refresh_yields_to_feedback_and_review_waves(self):
+        self.profile()
+        review = self.item("review", "stale_reviews", repo="o/review")
+        self.review(review)
+        follow = self.item("follow", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(follow.dir.relative_to(self.root)))
+        self.event("maintainer-comment", row)
+        for roles in ({"follow", "review"}, {"follow"}):
+            with self.subTest(roles=roles):
+                entries = self.actions()
+                wave = next(entry for entry in entries if entry["kind"] == "wave")
+                header = next(entry for entry in entries if entry["target"] == "profile-header")
+                self.assertEqual({task["role"] for task in nextaction.wave_tasks(wave)}, roles)
+                self.assertLess(entries.index(wave), entries.index(header))
+            self.plan["stale_reviews"] = []
+        self.plan["stale_reviews"] = [{"item": str(review.dir.relative_to(self.root)), "reasons": []}]
+        self.ledger.with_name("followup-events.jsonl").unlink()
+        self.assertEqual([entry["kind"] for entry in self.actions()], ["wave", "records", "report"])
+
+    def test_history_refresh_suppresses_header_until_an_attempt_is_saved(self):
+        self.profile()
+        path = self.ledger.with_name("pr-history.json")
+        for cache in (None, {"schema_version": 1, "prs": {}}, {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": "invalid"}},
+                      {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": (self.clock - dt.timedelta(hours=13)).isoformat()}}):
+            with self.subTest(cache=cache):
+                if cache is None:
+                    path.unlink()
+                else:
+                    write_json(path, cache)
+                with patch.object(profile_readme, "portfolio", side_effect=AssertionError("history must be attempted first")):
+                    self.assertEqual([entry["target"] for entry in self.actions("records")], ["history"])
+        write_json(path, {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat(), "error": "transport_error"}})
+        self.assertEqual([entry["target"] for entry in self.actions("records")], ["profile-header"])
+
+    def test_history_then_header_close_after_waves_release_commit_and_measure(self):
+        self.clock = dt.datetime(2026, 11, 8, 16, tzinfo=dt.timezone.utc)
+        self.profile()
+        self.lanes = ["o/new"]
+        self.status = " M ledger/prs.json\0"
+        self.ledger.with_name("pr-history.json").unlink()
+        release = nextaction.action("release", "idle", [], "Release", "", [], "")
+        with patch.object(nextaction, "release_action", return_value=release):
+            entries = self.actions()
+            self.assertEqual([entry["kind"] for entry in entries], ["wave", "release", "commit", "measure", "records", "report"])
+            self.assertEqual(entries[-2]["target"], "history")
+            write_json(self.ledger.with_name("pr-history.json"), {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat()}})
+            entries = self.actions()
+            self.assertEqual([entry["kind"] for entry in entries], ["wave", "release", "commit", "measure", "records", "report"])
+            self.assertEqual(entries[-2]["target"], "profile-header")
+            late = [nextaction.action("records", target, [], target, "", [], "") for target in ("profile-header", "history")]
+            with patch.object(nextaction, "record_actions", return_value=late):
+                entries = self.actions()
+            self.assertEqual([entry["kind"] for entry in entries], ["wave", "release", "commit", "measure", "records", "records", "report"])
+            self.assertEqual([entry["target"] for entry in entries[-3:-1]], ["history", "profile-header"])
+
+    def test_profile_merge_record_waits_for_the_history_refresh_and_publishes_once(self):
+        self.profile()
+        self.row(status="merged", merged_at=self.clock.isoformat())
+        self.ledger.with_name("pr-history.json").unlink()
+        entries = self.actions()
+        records = [entry["target"] for entry in entries if entry["kind"] == "records"]
+        self.assertEqual(records, ["teach", "notebook", "history", "profile"])
+        self.assertEqual(entries[-1]["kind"], "report")
+        write_json(self.ledger.with_name("pr-history.json"), {"schema_version": 1, "prs": {}, "reconciliation": {"checked_at": self.clock.isoformat()}})
+        records = [entry["target"] for entry in self.actions() if entry["kind"] == "records"]
+        self.assertEqual(records, ["profile", "teach", "notebook"])
+
+    def test_broken_profile_projection_does_not_hide_other_record_work(self):
+        self.profile()
+        receipt = {"at": self.clock.isoformat(), "ref": "commit", "sha256": "1" * 64}
+        self.row(status="merged", records={"profile": receipt})
+        with patch.object(profile_readme, "portfolio", side_effect=ValueError("invalid highlights")):
+            self.assertEqual([entry["target"] for entry in self.actions("records")], ["teach", "notebook"])
+
+    def test_invalid_profile_destinations_do_not_hide_pending_ci_or_merge_records(self):
+        self.profile()
+        receipt = {"at": self.clock.isoformat(), "ref": "commit", "sha256": "1" * 64}
+        self.row(status="merged", records={"profile": receipt})
+        self.event("ci-failing", {"url": "https://github.com/o/r/pull/2", "repo": "o/r", "number": 2},
+                   {"jobs": [{"name": "test"}]})
+        before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        for public in (None, {}, {"repository": "example/factory", "dashboard_url": "https://example.invalid/"}):
+            with self.subTest(public=public), patch.dict(CONFIG, {"public": public}):
+                if public is None:
+                    del CONFIG["public"]
+                error = io.StringIO()
+                with redirect_stderr(error):
+                    code, output = self.run_cli("next", "--all", "--json")
+                self.assertEqual(code, 0, error.getvalue())
+                self.assertEqual(error.getvalue(), "")
+                entries = json.loads(output)
+                self.assertEqual([entry["kind"] for entry in entries], ["ci-triage", "records", "records", "report"])
+                self.assertEqual([entry["target"] for entry in entries if entry["kind"] == "records"], ["teach", "notebook"])
+                self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
+        self.assertEqual([entry["target"] for entry in self.actions("records")], ["teach", "notebook", "profile-header"])
 
     def test_many_owed_life_os_records_print_one_deferral_template(self):
         for number in range(1, 8):

@@ -2,12 +2,14 @@
 import base64
 import binascii
 import collections
+import datetime as dt
+import html
 import json
 import pathlib
 import re
 from urllib.parse import quote
 
-from factory.core import ledger, privacy
+from factory.core import ledger, metrics, metrics_site, privacy
 from factory.core.repos import canonical
 from factory.util import CONFIG, ROOT, GH_READ_TIMEOUT, CommandError, gh_json, path_from_config, public_destinations
 
@@ -123,25 +125,154 @@ def render(rows=None, groups=None, user=None):
     return "\n\n".join(sections) + "\n"
 
 
-def portfolio(rows, user):
+def load_highlights():
+    path = ROOT / "lines/oss/profile-highlights.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError(f"cannot read lines/oss/profile-highlights.json; restore a valid highlights file: {error}") from None
+    if not isinstance(data, dict) or not isinstance(data.get("selected"), list):
+        raise ValueError("profile-highlights.json must contain a selected list")
+    active = data.get("active_contributor")
+    if not isinstance(active, dict) or any(type(active.get(key)) is not int or active[key] < 1 for key in ("minimum_merged", "limit")):
+        raise ValueError("profile-highlights.json needs positive minimum_merged and limit")
+    labels = active.get("labels", {})
+    if not isinstance(labels, dict) or any(not isinstance(repo, str) or not re.fullmatch(r"[\w.-]+/[\w.-]+", repo)
+            or canonical(repo).lower() != repo or not isinstance(label, str) or not label.strip() for repo, label in labels.items()):
+        raise ValueError("profile-highlights.json labels must map canonical lower-case repositories to display labels")
+    for entry in data["selected"]:
+        if (not isinstance(entry, dict) or not isinstance(entry.get("repo"), str)
+                or not re.fullmatch(r"[\w.-]+/[\w.-]+", entry["repo"])
+                or type(entry.get("number")) is not int or entry["number"] < 1 or not isinstance(entry.get("text"), str)):
+            raise ValueError(f"invalid profile-highlights.json entry: {entry!r}")
+    return data
+
+
+def ordinal(number):
+    suffix = "th" if 10 <= number % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+    return f"{number}{suffix}"
+
+
+def profile_date(value):
+    try:
+        date = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return (date.astimezone(dt.timezone.utc) if date.tzinfo else date).date().isoformat()
+    except (AttributeError, ValueError):
+        return None
+
+
+def load_influence():
+    path = path_from_config("ledger_file").with_name("influence.jsonl")
+    try:
+        lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        data = json.loads(lines[-1]) if lines else {}
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as error:
+        raise ValueError(f"cannot read latest influence reading: {error}") from None
+    if not isinstance(data, dict) or not isinstance(data.get("repos", []), list):
+        raise ValueError("latest influence reading must contain a repos list")
+    return data
+
+
+def active_contributors(upstream, user, settings):
+    merged = merged_by_repo(upstream)
+    projects = [entry for entry in merged.values() if len(entry["numbers"]) >= settings["minimum_merged"]]
+    if not projects:
+        return ''
+    labels = {canonical(entry["repo"]).lower(): entry.get("label", canonical(entry["repo"]).split('/')[1])
+              for group in load_groups()["groups"] for entry in group["repos"]}
+    labels.update(settings.get("labels", {}))
+    projects.sort(key=lambda entry: (-len(entry["numbers"]), labels.get(entry["repo"].lower(), entry["repo"].split('/')[1]).lower()))
+    reading = load_influence()
+    ranks = {canonical(entry["repo"]).lower(): entry for entry in reading.get("repos", []) if isinstance(entry, dict) and isinstance(entry.get("repo"), str)}
+    date = profile_date(reading.get("at"))
+    entries, ranked = [], False
+    for index, entry in enumerate(projects[:settings["limit"]]):
+        repo = entry["repo"]
+        label = labels.get(repo.lower(), repo.split('/')[1])
+        detail = str(len(entry["numbers"])) + (" merged" if index == 0 else "")
+        rank = ranks.get(repo.lower(), {})
+        position, seen = rank.get("rank"), rank.get("contributors_seen")
+        if date and type(position) is int and type(seen) is int and 0 < position <= seen:
+            detail += f", {ordinal(position)} of {seen}" + (" contributors" if index == 0 else "")
+            ranked = True
+        entries.append(f"[{label}]({merged_url(repo, user)}) ({detail})")
+    if not entries:
+        return ''
+    text = "**Active contributor to** " + ' · '.join(entries) + '.'
+    return text + (f" Ranks are by commits in GitHub's contributor list on {date}." if ranked else '')
+
+
+def portfolio_data(rows, user, generated_at=None):
+    """Project at an explicit snapshot time, or at the retained observation time."""
+    reader = metrics.Reader()
+    ledger_path = path_from_config("ledger_file")
+    snapshot = {"prs": rows, "pr_history": reader.json(ledger_path.with_name("pr-history.json")),
+                "outcomes": reader.json(ledger_path.with_name("pr-outcomes.json"))}
+    if generated_at is None:
+        history = snapshot["pr_history"]
+        check = history.get("reconciliation") if isinstance(history, dict) else None
+        if isinstance(check, dict):
+            activity = check.get("activity")
+            generated_at = metrics.timestamp(activity.get("checked_at"), exact=True) if isinstance(activity, dict) else None
+            generated_at = generated_at or metrics.timestamp(check.get("checked_at"), exact=True)
+    return metrics.compute(snapshot, {**CONFIG, "github_user": user}, generated_at=generated_at)
+
+
+def activity_alt(data):
+    days = (data.get("activity") or {}).get("days") or []
+    if not days:
+        return "Daily activity: no dated events in this snapshot."
+    totals = {key: sum(day[key] for day in days) for key in ("opened", "merged", "closed_unmerged")}
+    return (f"Daily activity from {days[0]['date']} to {days[-1]['date']}, Asia/Singapore dates: "
+            f"{totals['opened']} pull requests opened, {totals['merged']} merged and "
+            f"{totals['closed_unmerged']} closed without merge. Each event is dated by when it happened.")
+
+
+def portfolio(rows, user, *, generated_at=None):
     upstream = [row for row in rows if canonical(row["repo"]).split("/")[0].lower() != user.lower()]
-    total = sum(merged_counts(upstream).values())
+    merged = merged_by_repo(upstream)
+    data = portfolio_data(upstream, user, generated_at=generated_at)
     repo, dashboard = public_destinations(CONFIG)
-    return ("\U0001f916 This account is automated by a software contribution factory that I build and operate.\n\n"
-            f"**{total} merged upstream pull requests** recorded in the ledger.\n\n"
-            f"[Dashboard]({dashboard}) · [Factory](https://github.com/{repo})\n")
+    settings = load_highlights()
+    dates = sorted(date for row in upstream if (date := profile_date(row.get("submitted_at"))))
+    since = f"Since {dates[0]} this" if dates else "This"
+    disclosure = dt.date.fromisoformat(CONFIG["public"]["disclosure_since"]).isoformat()
+    image_url = html.escape(dashboard, quote=True)
+    parts = [f'<a href="{image_url}"><picture>'
+             f'<source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="{image_url}profile-dark-compact.svg">'
+             f'<source media="(max-width: 600px)" srcset="{image_url}profile-light-compact.svg">'
+             f'<source media="(prefers-color-scheme: dark)" srcset="{image_url}profile-dark.svg">'
+             f'<img src="{image_url}profile-light.svg" width="880" alt="Run by Software Factory: merged pull requests, merge rate and merged-without-rework rate with the snapshot date, and the steps the factory takes. The counts are repeated in the text below."></picture></a>',
+             f"**All in on AI.** {since} account's upstream contributions are run by [Software Factory]({dashboard}), an agent pipeline I design and operate. "
+             f"It opens the pull requests, files the issues and writes the replies in other people's projects. From {disclosure} each new pull request says so.",
+             "```text\n" + metrics_site.status_card(data) + "```",
+             "Printed by `bin/factory metrics card` from the public snapshot named in its second line. The figures are redrawn each time the site is published; this block is rewritten when the profile is synced. Nothing on this page runs live.",
+             f'<a href="{image_url}board.html"><picture><source media="(prefers-color-scheme: dark)" srcset="{image_url}activity-dark.svg">'
+             f'<img src="{image_url}activity-light.svg" width="880" alt="{html.escape(activity_alt(data), quote=True)}"></picture></a>']
+    active = active_contributors(upstream, user, settings["active_contributor"])
+    if active:
+        parts.append(active)
+    selected = []
+    for entry in settings["selected"]:
+        name, number = canonical(entry["repo"]), entry["number"]
+        if number not in merged.get(name.lower(), {}).get("numbers", set()):
+            raise ValueError(f"profile-highlights.json entry {name}#{number} is not a merged upstream pull request")
+        selected.append(f"- [{name.split('/')[1]}#{number}](https://github.com/{name}/pull/{number}): {entry['text']}")
+    if selected:
+        parts.append("**Selected pull requests**\n\n" + '\n'.join(selected))
+    parts.append(f"[The factory]({dashboard}) · [Source](https://github.com/{repo}) · [Status board]({dashboard}board.html) · [Metric definitions](https://github.com/{repo}/blob/HEAD/docs/metrics.md)")
+    return '\n\n'.join(parts) + '\n'
 
 
-def render_readme(text, rows=None, groups=None, user=None):
+def render_readme(text, rows=None, groups=None, user=None, *, generated_at=None):
     user = user or CONFIG["github_user"]
     rows = ledger_rows(user) if rows is None else rows
     text = replace_block(with_markers(text), render(rows, groups, user))
-    intro = portfolio(rows, user)
+    intro = portfolio(rows, user, generated_at=generated_at)
     if block(text, PORTFOLIO_START, PORTFOLIO_END) is not None:
-        text = replace_block(text, intro, PORTFOLIO_START, PORTFOLIO_END)
-        start, end = text.index(PORTFOLIO_START), text.index(PORTFOLIO_END) + len(PORTFOLIO_END)
-        header = text[start:end]
-        return header + "\n\n" + (text[:start] + text[end:]).lstrip()
+        return replace_block(text, intro, PORTFOLIO_START, PORTFOLIO_END)
     return PORTFOLIO_START + "\n" + intro + PORTFOLIO_END + "\n\n" + text
 
 
@@ -267,7 +398,7 @@ def privacy_findings(text):
     return list(dict.fromkeys(found))
 
 
-def check(text, user):
+def check(text, user, *, generated_at=None):
     missing = [key for key in ("private_terms", "git_email_previous") if key not in CONFIG]
     if missing:
         raise ValueError(f"{', '.join(missing)} not configured (.factory.local.json); the privacy check cannot run")
@@ -286,7 +417,7 @@ def check(text, user):
     }
     intro = block(text, PORTFOLIO_START, PORTFOLIO_END)
     if intro is not None:
-        result["portfolio_mismatch"] = [] if intro == "\n" + portfolio(rows, user) and text.startswith(PORTFOLIO_START) else [
+        result["portfolio_mismatch"] = [] if intro == "\n" + portfolio(rows, user, generated_at=generated_at) else [
             "run factory sync profile --readme PATH --write"]
     current = block(text)
     if current is not None:

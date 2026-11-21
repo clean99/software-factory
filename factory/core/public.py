@@ -169,6 +169,31 @@ def metrics_files(root, *, config, records_root=None, suite_report=None):
     return files, "included"
 
 
+def readme(template, repo, dashboard, files, metrics_status):
+    tokens = re.compile(r"\{(as_of|opened|merged|closed|open|projects|first_opened|local_date|today_opened|today_merged|today_closed|sessions_total|sessions_clean|sessions_since)\}")
+    if metrics_status == "not installed":
+        template = re.sub(r'<p align="center">.*?</p>', lambda match: '' if 'site/' in match[0] else match[0], template, flags=re.S)
+        template = '\n\n'.join(part for part in template.split('\n\n') if not tokens.search(part))
+    elif tokens.search(template):
+        data = json.loads(files["site/metrics.json"])
+        dates = sorted(row["opened"] for row in data["pull_requests"] if row["opened"])
+        values = {"as_of": data["cohort"]["as_of"], "first_opened": dates[0] if dates else "n/a",
+                  "projects": data["population"]["projects"],
+                  **{key: data["metrics"]["prs_" + key]["value"] for key in ("opened", "merged", "closed", "open")}}
+        activity = data.get("activity") or {}
+        date = activity.get("as_of_local_date")
+        today = next((row for row in activity.get("days", []) if date and row.get("date") == date), {})
+        values.update(local_date=date, today_opened=today.get("opened"),
+                      today_merged=today.get("merged"), today_closed=today.get("closed_unmerged"))
+        if any(key.startswith('sessions_') for key in tokens.findall(template)):
+            sessions = data["metrics"]["shift_completion_rate"]
+            if sessions["status"] == "not_tracked" or sessions["value"] is None or not sessions.get("since"):
+                raise ValueError("README session summaries need a tracked value and since date")
+            values.update(sessions_total=sessions["denominator"], sessions_clean=sessions["numerator"], sessions_since=sessions["since"])
+        template = tokens.sub(lambda match: str(values[match[1]]) if values[match[1]] is not None else "n/a", template)
+    return template.replace("{repository}", repo).replace("{dashboard_url}", dashboard)
+
+
 def build(out, *, root=ROOT, config=None, rules=None, records_root=None, suite_report=None):
     config = CONFIG if config is None else config
     rules = policy() if rules is None else rules
@@ -192,15 +217,15 @@ def build(out, *, root=ROOT, config=None, rules=None, records_root=None, suite_r
         starter = public_config(config)
         starter["repo_renames"] = rules.get("repo_renames", {})
         write_file(tree, "factory.config.json", json.dumps(starter, indent=2) + "\n")
+        files, metrics_status = metrics_files(root, config=config, records_root=records_root, suite_report=suite_report)
         template, _ = regular_file(root, rules["readme_template"])
-        write_file(tree, "README.md", template.replace("{repository}", repo).replace("{dashboard_url}", dashboard))
+        write_file(tree, "README.md", readme(template, repo, dashboard, files, metrics_status))
         for name, text in rules.get("generated", {}).items():
             write_file(tree, name, text)
         # The public policy contains no private name mappings or private inventory.
         clean_policy = {key: value for key, value in rules.items() if key not in {"scrub", "private_reasons"}}
         clean_policy["scrub"] = []
         write_file(tree, "factory/core/public-export.json", json.dumps(clean_policy, indent=2) + "\n")
-        files, metrics_status = metrics_files(root, config=config, records_root=records_root, suite_report=suite_report)
         for name, text in files.items():
             if (tree / name).exists():
                 raise ValueError("metrics export collides with an allowlisted path")

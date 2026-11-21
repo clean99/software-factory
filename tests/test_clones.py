@@ -462,6 +462,27 @@ class Clones(unittest.TestCase):
         self.assertTrue(result["reports"][0]["released"])
         self.assertGreater(result["bytes"], 0)
 
+    def test_release_idle_keeps_profile_and_reports_other_checkouts(self):
+        user = CONFIG["github_user"]
+        profile = util.clone_dir(f"{user}/{user}")
+        dirty = self.root / "repos" / "dirty"
+        for checkout in (profile, dirty):
+            self.command("git", "clone", self.upstream.as_uri(), str(checkout))
+        (dirty / "keep.txt").write_text("work in progress\n")
+        before = {p.relative_to(profile): p.read_bytes() for p in profile.rglob("*") if p.is_file()}
+        alias = self.root / "repos-alias"
+        alias.symlink_to(profile.parent, target_is_directory=True)
+        with patch.dict(CONFIG, {"repos_dir": str(alias)}):
+            for dry_run in (True, False):
+                with self.subTest(dry_run=dry_run):
+                    result = clones.release_idle(set(), dry_run=dry_run)
+                    self.assertEqual({row["checkout"]: row["status"] for row in result["reports"]},
+                                     {str(dirty): "protected", str(self.checkout): "would_release" if dry_run else "released"})
+                    self.assertEqual(before, {p.relative_to(profile): p.read_bytes() for p in profile.rglob("*") if p.is_file()})
+                    self.assertTrue(profile.is_dir())
+                    self.assertEqual(self.checkout.exists(), dry_run)
+                    self.assertEqual((dirty / "keep.txt").read_text(), "work in progress\n")
+
     def test_idle_cli_succeeds_with_protected_clones_and_reports_each_result(self):
         dirty = self.root / "repos" / "dirty"
         self.command("git", "clone", self.upstream.as_uri(), str(dirty))

@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "rule": "Merged entries: merged, no recorded rework, one per project, with a stated basis. The closure is the one whose reason changed a rule.",
+  "merged": [
+    {
+      "repo": "rollup/rollup",
+      "number": 6630,
+      "label": "Rollup",
+      "text": "Dynamic imports of a directory's index file name their chunk after the directory.",
+      "basis": "It closes an issue another user opened in February 2023."
+    },
+    {
+      "repo": "assistant-ui/assistant-ui",
+      "number": 10291,
+      "label": "assistant-ui",
+      "text": "OpenCode tool output and edit diffs reach UI renderers through the artifact field.",
+      "basis": "The approving maintainer wrote out the technical reason for accepting it."
+    },
+    {
+      "repo": "upstash/context7",
+      "number": 3530,
+      "label": "Context7",
+      "text": "An empty library search keeps its filter notice, so an agent can see why the list is empty.",
+      "basis": "The maintainer confirmed the behaviour and reported 263 tests passing on their side."
+    }
+  ],
+  "closure": {
+    "repo": "postcss/postcss",
+    "number": 2182,
+    "date": "2026-11-01",
+    "quote": "Sending non-real issues is not useful and not ethical.",
+    "quoted": "A PostCSS maintainer, closing",
+    "happened": "The failing input came from the factory probing the code, not from anyone using the project. The account said so in the thread. Two later pull requests were closed for the same lack of a real case.",
+    "changed": "A candidate must name who hits the problem, with a source. Since 2026-11-10 a separate agent decides build, propose or drop before any code is written."
+  }
+}

@@ -1,6 +1,6 @@
 # Current policy
 
-Rules in force as of 2026-11-20. [Decisions](decisions.md) preserves the dated source statements; [factory.config.json](../../factory.config.json) owns numeric limits. Repository-specific restrictions can be stricter and remain on repository cards and in [lanes.json](lanes.json).
+Rules in force as of 2026-11-21. [Decisions](decisions.md) preserves the dated source statements; [factory.config.json](../../factory.config.json) owns numeric limits. Repository-specific restrictions can be stricter and remain on repository cards and in [lanes.json](lanes.json).
 
 ## Publishing and approval
 
@@ -16,7 +16,7 @@ Rules in force as of 2026-11-20. [Decisions](decisions.md) preserves the dated s
 - Repositories without a first merge share `max_open_prs_total` (currently 20); repositories that have merged our work do not consume that exploration pool (2026-10-27).
 - Before a repository's first merge, allow `max_open_prs_per_repo_before_first_merge` (currently 1) open PR (2026-10-25).
 - After a repository's first merge, allow `max_open_prs_per_repo` (currently 3) open PRs, subject to stricter repository-card or paused-lane restrictions (2026-10-27).
-- Daily new submissions have `max_new_prs_per_day` (currently null), meaning no daily total cap, not permission to lower quality or bypass repository caps (2026-10-31).
+- Daily new submissions have `max_new_prs_per_day` (currently 1), counted by Asia/Singapore calendar day regardless of the machine zone; this is a ceiling, not a quota, and repository caps and all quality gates still apply (2026-11-21).
 - Stop new submissions when a PR has been open for `stale_open_days` (currently 3) days and none of our work in that repository has merged since it opened; resume only when the stale condition clears and the lane permits work (2026-10-31).
 - Count open PRs within `open_pr_window_days` (currently 180) days for the cap; do not treat older unrelated work as current exploration inventory (2026-10-25).
 - Refresh stored qualification after `qualify_max_age_hours` (currently 12) hours; this does not replace uncached collision checks immediately before coding and new-PR publication (2026-10-24).
@@ -77,7 +77,9 @@ Rules in force as of 2026-11-20. [Decisions](decisions.md) preserves the dated s
 
 ## Cadence
 
-- Run the session shift twice daily at 08:43 and 21:43 UTC+8, handling maintainer feedback and failing CI before new work; the unattended preparation-only scheduler is a separate mode and never publishes (2026-10-31).
-- Keep the target of ten merges per day subordinate to useful work and all gates; a shift with no suitable items is valid (2026-11-02).
-- Hold the shift lock, keep its lease valid while work runs and release it on exit; do not start another writing wave in the same repository concurrently (2026-11-10).
-- Measure influence and merge outcomes on Monday mornings and rotate lanes after a full two-week observation window with neither rank nor merges improving (2026-11-04).
+- Run one daily loop at 21:43 Asia/Singapore and one weekly review on Sunday at 22:30 in the same zone, through the single scheduler configured in `schedule/schedule.json`. Both use the same coordinator and sub-agent routes. The scheduler runs on one machine at a time; moving it is a separate migration that the owner confirms, and no second loop is started in the meantime (2026-11-21).
+- Sync upstream events and feedback, then read the configured public repository's open issues before new work. Follow `schedule/session-shift.md` for verified maintainer opt-outs: stop the lane, park prepared items, acknowledge through the scanned own-repository path, and record the result. Bad-PR feedback becomes a lesson candidate and an owner action; unclear feedback gets one owner notification. Handle existing contributions and failing CI before selecting new work (2026-11-21).
+- Aim for one qualified new pull request a day. A day or shift with none is valid when its reason is recorded; volume is never a target. Never lower the quality bar or nudge maintainers to fill a quota (2026-11-21).
+- Hold the shift lock, keep its lease valid while work runs and release it on exit; do not start another writing wave in the same repository concurrently (2026-11-10). The weekly review waits for the daily runner and lease without preempting either, within its grace window (2026-11-21).
+- Follow `schedule/weekly-review.md`: record data refreshes and the dated retro as factory records; prepare production code, policy, role, template and public-copy improvements on `weekly/<run key>` with tests and one owner action, then wait for owner review. No deletions, large refactors or unreviewed publication (2026-11-21).
+- Keep Monday's “Measure the week” queue action as a fallback. A retro page dated within six days closes it, so the weekly review and fallback do not both write a retro. Lane rotation still needs comparable two-week evidence, not a submission quota (2026-11-21).

@@ -4,16 +4,17 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
+import os
 import pathlib
 import re
 import shlex
 import shutil
 import sys
 
-from factory.core import clean, clones, ledger, lessons, review, shiftlock, verdicts
+from factory.core import clean, clones, ledger, lessons, metrics, metrics_history, review, shiftlock, verdicts
 from factory.core.commit import LIMIT, LOG_POLICY
 from factory.core.repos import canonical
-from factory.oss import followup, lanes, plan, sync
+from factory.oss import followup, lanes, plan, profile_readme, sync
 from factory.util import CONFIG, ROOT, CommandError, Item, iso, now, parse_iso, path_from_config, read_json, run, write_json
 
 ZONE = dt.timezone(dt.timedelta(hours=8))
@@ -27,6 +28,7 @@ ORDER = {kind: index for index, kind in enumerate(("push", "disk", "repair", "ow
 ITEM_ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError)
 SCOUT_COOLDOWN = dt.timedelta(days=3)
 ITEM_STALL = dt.timedelta(days=5)
+HISTORY_REFRESH = dt.timedelta(hours=12)
 # Printing a brief records a worker start, not completed work; exclude role-timeline.json.
 PROGRESS_FILES = ("item.json", "demand.json", "value-review.json", "proposal.md", "verify.md", "validation.md",
                   "redgreen.json", "pr.md", "review.md", "review.json", "coordinator-review.md",
@@ -488,6 +490,80 @@ def retro_dates():
     return dates
 
 
+def quarantine(at, name):
+    return ROOT / "workspace/quarantine" / f"{name}-{at.astimezone(dt.timezone.utc):%Y%m%dT%H%M%SZ}"
+
+
+def history_action(at):
+    path = path_from_config("ledger_file").with_name("pr-history.json")
+    if not path.resolve().is_relative_to((ROOT / "ledger").resolve()):
+        return action("repair", "history-cache", ["location", str(path)], "Repair the saved history location",
+                      f"The saved history beside the ledger ({path}) is outside this checkout's ledger directory, where bin/factory metrics history writes; "
+                      "the public pages and the profile header would read a different file than the refresh writes.",
+                      ["Move the ledger under ledger/ and point ledger_file there, keeping its contents; then run bin/factory next."],
+                      "The ledger and its saved history are under this checkout's ledger directory.")
+    try:
+        cache = metrics_history.load_cache(path)
+    except CommandError:
+        relative = path.relative_to(ROOT)
+        copy = quarantine(at, "pr-history").with_suffix(".json")
+        return action("repair", "history-cache", ["unreadable", str(relative)], "Repair the saved pull request history",
+                      f"{relative} cannot be read by bin/factory metrics history, which refuses to overwrite it; the refresh and the profile header wait for it.",
+                      [shlex.join(["mkdir", "-p", str(copy.parent)]), shlex.join(["cp", str(relative), str(copy)]),
+                       shlex.join(["git", "restore", "--source=HEAD", "--", str(relative)]),
+                       "If the committed copy is unreadable too, remove the working file instead; bin/factory metrics history then starts a new cache. Run bin/factory next for the refresh."],
+                      "bin/factory metrics history can read the saved history; the damaged copy stays under workspace/quarantine for inspection.")
+    try:
+        attempt = metrics.timestamp(cache.get("reconciliation", {}).get("checked_at"), exact=True)
+    except (OverflowError, *ITEM_ERRORS):
+        attempt = None
+    if attempt is not None and at - attempt < HISTORY_REFRESH:
+        return None
+    stamp = attempt.isoformat() if attempt is not None else None
+    relative = path.relative_to(ROOT)
+    entry = action("records", "history", stamp, "Refresh saved pull request history",
+                   f"Last attempt: {stamp or 'never'}; public counts, daily activity and the profile header come from this saved observation.",
+                   [command("metrics", "history", "--cache", relative), command("commit", "-m", "Refresh saved pull request history", "--path", relative),
+                    "Exit 3 from the refresh means GitHub could not be read completely: the cache keeps the last successful counts and records the attempt, so commit it either way."],
+                   "The saved GitHub observation was attempted within the last twelve hours.")
+    entry["observation"] = True
+    return entry
+
+
+def profile_header_action(profile):
+    try:
+        checkout = pathlib.Path(profile).parent
+        if not checkout.exists():
+            return action("records", "profile-header", "checkout", "Restore the profile checkout",
+                          "The profile checkout is missing; restore it before comparing its published header with the retained snapshot.",
+                          [command("sync", "profile", "--readme", profile)],
+                          "The profile checkout exists with an origin/main README.")
+        if not (checkout / ".git").exists():
+            moved = quarantine(now(), checkout.name)
+            return action("repair", "profile-checkout", str(checkout), "Move the unexpected profile directory aside",
+                          f"{checkout} exists without Git metadata, so sync profile cannot restore the profile clone there.",
+                          [shlex.join(["mkdir", "-p", str(moved.parent)]), shlex.join(["mv", str(checkout), str(moved)]),
+                           command("sync", "profile", "--readme", profile)],
+                          "The profile checkout is a Git clone with an origin/main README; the moved directory stays under workspace/quarantine for inspection.")
+        text = run(["git", "-C", str(checkout), "show", "refs/remotes/origin/main:README.md"],
+                   env={**os.environ, "GIT_NO_LAZY_FETCH": "1"}, timeout=5).stdout
+        current = profile_readme.block(text, profile_readme.PORTFOLIO_START, profile_readme.PORTFOLIO_END)
+        if current is None:
+            return None
+        user = CONFIG["github_user"]
+        expected = "\n" + profile_readme.portfolio(profile_readme.ledger_rows(user), user)
+    except (CommandError, *ITEM_ERRORS):
+        return None
+    if current == expected:
+        return None
+    return action("records", "profile-header", expected, "Refresh profile header",
+                  "The published profile header differs from the current retained public snapshot; no merge receipt is owed for this refresh.",
+                  [shlex.join(["git", "-C", str(checkout), "pull", "--ff-only"]),
+                   command("sync", "profile", "--readme", profile, "--write"), command("profile-check", "--readme", profile),
+                   'Scan, commit and push the profile repository as docs/repairs.md#profile-repository describes with commit message "Refresh profile header"; verify the remote commit.'],
+                  "The profile checkout's origin/main README carries the generator's header for the current retained snapshot.", role="record")
+
+
 def record_actions(rows, at, load_item):
     by_url = {r["url"]: r for r in rows}
     pending = sync.status()
@@ -559,6 +635,14 @@ def record_actions(rows, at, load_item):
                              [command("sync", "audit", "--clear-missing", "--readme", profile, "--interview-dir", ROOT / "docs/interview", "--notebook-file", "<read-back status note>"),
                               "Supply the current destination texts; --clear-missing removes only absent unverified receipts and preserves every other receipt."],
                              "No unverified destination receipts remain; absent destinations become ordinary records actions."))
+    history = history_action(at)
+    if history:
+        result.append(history)
+    waits = {("records", "profile"), ("records", "history"), ("repair", "history-cache")}
+    if not any((entry["kind"], entry["target"]) in waits for entry in result):
+        header = profile_header_action(profile)
+        if header:
+            result.append(header)
     return result
 
 
@@ -1049,7 +1133,16 @@ def actions(observe=True, include_release=True):
         return entry["kind"] in ACKABLE
 
     unique = {entry["id"]: entry for entry in result if not acknowledged(entry)}
-    return sorted(unique.values(), key=lambda entry: ORDER[entry["kind"]])
+    # Close-of-session records: refresh the saved history, then publish the profile once from it.
+    history_pending = any(entry["kind"] == "records" and entry["target"] == "history" for entry in unique.values())
+    closing = {"history": 1, "profile": 2, "profile-header": 3} if history_pending else {"profile-header": 3}
+
+    def order(entry):
+        if entry["kind"] == "records" and entry["target"] in closing:
+            return ORDER["report"] - 1, closing[entry["target"]]
+        return ORDER[entry["kind"]], 0
+
+    return sorted(unique.values(), key=order)
 
 
 def wave_tasks(entry):

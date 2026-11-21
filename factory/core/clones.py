@@ -444,11 +444,13 @@ def status():
 
 def release_idle(active, dry_run=False):
     active = {pathlib.Path(path).resolve() for path in active}
+    user = CONFIG["github_user"]
+    profile = clone_dir(f"{user}/{user}").resolve()
     uses = _items()
     reports = []
     checkouts = sorted(clean.checkouts(), key=lambda path: (not (path / ".git").is_file(), str(path)))
     for checkout in checkouts:
-        if any(item.dir in active for item, _ in uses.get(checkout, [])):
+        if checkout == profile or any(item.dir in active for item, _ in uses.get(checkout, [])):
             continue
         reports.append(release(checkout, dry_run=dry_run))
     return {"reports": reports, "bytes": sum(report["bytes"] for report in reports)}

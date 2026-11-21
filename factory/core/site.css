@@ -1,0 +1,72 @@
+/* A drawing set for a factory: drafting paper by day, a control room by night. Orange is work in motion, blue is merged, grey is stopped. */
+@font-face{font-family:"Big Shoulders";font-weight:600;font-style:normal;font-display:swap;src:url(data:font/woff2;base64,@@FONT_600@@) format("woff2")}
+@font-face{font-family:"Big Shoulders";font-weight:800;font-style:normal;font-display:swap;src:url(data:font/woff2;base64,@@FONT_800@@) format("woff2")}
+
+:root{
+  color-scheme:light;
+  --paper:#f2efe8;--panel:#faf8f3;--ink:#15202b;--dim:#55606c;--rule:#b9b1a1;--hair:#d9d2c3;
+  --flow:#b93a07;--merged:#1d5fbf;--stop:#5f6975;--grid:rgba(21,32,43,.05);--belt:#ded7c8;
+  --on-flow:#fff;--grain:.5;--glow:transparent;
+  --display:"Big Shoulders","Avenir Next Condensed","Roboto Condensed","Arial Narrow",sans-serif;
+  --text:Charter,"Bitstream Charter","Iowan Old Style","Sitka Text",Cambria,Georgia,serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#0c1014;--panel:#12181f;--ink:#e9edf1;--dim:#93a0ad;--rule:#3a4653;--hair:#232d38;
+    --flow:#ff7a1a;--merged:#5aa7ff;--stop:#8b96a3;--grid:rgba(255,255,255,.035);--belt:#263241;
+    --on-flow:#0c1014;--grain:.35;--glow:rgba(255,122,26,.09);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#0c1014;--panel:#12181f;--ink:#e9edf1;--dim:#93a0ad;--rule:#3a4653;--hair:#232d38;
+  --flow:#ff7a1a;--merged:#5aa7ff;--stop:#8b96a3;--grid:rgba(255,255,255,.035);--belt:#263241;
+  --on-flow:#0c1014;--grain:.35;--glow:rgba(255,122,26,.09);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:1rem}
+body{margin:0;background-color:var(--paper);color:var(--ink);font:400 1.0625rem/1.6 var(--text);overflow-x:hidden;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:var(--grain);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+a{color:inherit;text-decoration-color:var(--flow);text-decoration-thickness:1.5px;text-underline-offset:.2em}
+a:hover{color:var(--flow)}
+:focus-visible{outline:2px solid var(--flow);outline-offset:3px}
+[hidden]{display:none !important}
+.wrap{width:min(1180px,100%);margin:0 auto;padding:0 max(clamp(16px,4vw,40px),env(safe-area-inset-left,0px)) 0 max(clamp(16px,4vw,40px),env(safe-area-inset-right,0px))}
+.skip{position:absolute;left:-999px;top:0;background:var(--ink);color:var(--paper);padding:.5rem .9rem;font:600 .8rem var(--mono);z-index:9}
+.skip:focus{left:8px;top:8px}
+
+/* top bar */
+.top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1.05rem;padding-bottom:1.05rem;border-bottom:1px solid var(--rule)}
+.brand{display:flex;align-items:center;gap:.6rem;font:800 1.35rem/1 var(--display);letter-spacing:.06em;text-transform:uppercase;text-decoration:none;white-space:nowrap;padding:.3rem 0}
+.brand i{width:.72rem;height:.72rem;background:var(--flow);display:block}
+.top nav{display:flex;align-items:center;gap:clamp(.7rem,1.6vw,1.4rem);font:500 .72rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.top nav a{text-decoration:none;color:var(--dim);padding:.55rem 0;white-space:nowrap}
+.top nav a:hover{color:var(--ink)}
+.top nav a.out{color:var(--ink);border-bottom:1.5px solid var(--flow)}
+.theme{font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--dim);background:none;border:1px solid var(--rule);padding:.32rem .55rem;cursor:pointer;border-radius:0;min-width:3.6rem;min-height:1.8rem}
+.theme:hover{color:var(--ink);border-color:var(--ink)}
+@media (max-width:900px){.top nav a.sec-link{display:none}}
+@media (max-width:480px){.brand{font-size:1.08rem;gap:.4rem}.top nav{gap:.6rem;font-size:.64rem;letter-spacing:.04em}.theme{padding:.3rem .4rem;min-width:3rem}}
+
+/* sheets and type */
+.sec{position:relative;padding-top:clamp(2.8rem,6.5vw,5rem);padding-bottom:clamp(.6rem,1.5vw,1.2rem)}
+.sheet{display:flex;gap:1.1rem;align-items:center;margin:0 0 1.1rem;font:500 .66rem/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.sheet b{color:var(--ink);font-weight:600;white-space:nowrap}
+.sheet::after{content:"";flex:1;height:1px;background:var(--rule)}
+.sheet h2{font:inherit;letter-spacing:inherit;max-width:none;margin:0}
+.ghost{position:absolute;right:clamp(16px,4vw,40px);top:clamp(2.2rem,5.4vw,4.1rem);font:800 clamp(4.6rem,11vw,9rem)/.8 var(--display);color:transparent;-webkit-text-stroke:1.5px var(--hair);pointer-events:none;user-select:none}
+h2{margin:0;font:800 clamp(2rem,5vw,3.5rem)/.95 var(--display);text-transform:uppercase;letter-spacing:.006em;max-width:17em;position:relative;text-wrap:balance}
+h3{margin:0;font:800 1.5rem/1 var(--display);text-transform:uppercase;letter-spacing:.03em}
+.sub{margin:.8rem 0 0;max-width:44em;color:var(--dim);position:relative}
+.more{margin:1.1rem 0 0;font:500 .74rem/1.6 var(--mono)}
+.stale{display:none;margin:1rem 0 0;border:1.5px solid var(--flow);padding:.7rem .9rem;font:500 .76rem/1.5 var(--mono);background:var(--panel)}
+.stale.on{display:block}
+.foot{margin-top:clamp(2.6rem,6vw,4.4rem);border-top:1.5px solid var(--ink);padding-top:1rem;padding-bottom:2.2rem;display:flex;flex-wrap:wrap;gap:.4rem 1.6rem;justify-content:space-between;font:500 .66rem/1.5 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.foot a{display:inline-block;padding:.4rem 0}
+@media (max-width:620px){.ghost{display:none}.sheet{gap:.8rem}.sheet::after{min-width:1rem}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none !important;transition:none !important}}
