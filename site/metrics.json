@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "generated_at": "2026-11-20T14:36:02+00:00",
+  "generated_at": "2026-11-21T01:53:38+00:00",
   "links": {
     "repository": "https://github.com/clean99/software-factory",
     "readme": "https://github.com/clean99/software-factory#readme",
@@ -26,7 +26,7 @@
     "prs_merged": {
       "label": "PRs merged",
       "group": "Output",
-      "value": 100,
+      "value": 101,
       "unit": "count",
       "status": "tracked",
       "definition": "Distinct PRs with a saved merged outcome.",
@@ -41,7 +41,7 @@
     "prs_open": {
       "label": "PRs open",
       "group": "Output",
-      "value": 19,
+      "value": 18,
       "unit": "count",
       "status": "tracked",
       "definition": "Distinct PRs with a saved open outcome.",
@@ -56,36 +56,36 @@
     "merge_rate": {
       "label": "Merge rate",
       "group": "Acceptance",
-      "value": 0.909,
+      "value": 0.91,
       "unit": "percent",
       "status": "partial",
       "definition": "Merged / (merged + closed without merge). Open and unclassified outcomes are excluded.",
       "source": "PR ledger: saved outcomes",
       "coverage": {
-        "covered": 110,
+        "covered": 111,
         "total": 129
       },
       "reason": null,
       "note": "Coverage counts concluded PRs against all classified PRs; open PRs are not failures.",
-      "numerator": 100,
-      "denominator": 110
+      "numerator": 101,
+      "denominator": 111
     },
     "closed_unmerged_share": {
       "label": "Closed without merge",
       "group": "Acceptance",
-      "value": 0.091,
+      "value": 0.09,
       "unit": "percent",
       "status": "partial",
       "definition": "Closed without merge / (merged + closed without merge).",
       "source": "PR ledger: saved outcomes",
       "coverage": {
-        "covered": 110,
+        "covered": 111,
         "total": 129
       },
       "reason": null,
       "note": null,
       "numerator": 10,
-      "denominator": 110
+      "denominator": 111
     },
     "first_round_approval_share": {
       "label": "First-round approval",
@@ -225,7 +225,7 @@
       "source": "Follow-up events; PR ledger",
       "coverage": {
         "covered": 0,
-        "total": 100
+        "total": 101
       },
       "reason": "Follow-up stops observing merged PRs; no post-merge incident registry exists. Red/green test reverts are not production reverts.",
       "note": null
@@ -240,7 +240,7 @@
       "source": "Follow-up events; PR ledger",
       "coverage": {
         "covered": 0,
-        "total": 100
+        "total": 101
       },
       "reason": "Follow-up stops observing merged PRs; no post-merge incident registry exists. Red/green test reverts are not production reverts.",
       "note": null
@@ -248,13 +248,13 @@
     "independent_review_rounds_per_pr": {
       "label": "Pre-publication independent review rounds per PR",
       "group": "First-round quality",
-      "value": 1.442,
+      "value": 1.445,
       "unit": "rounds",
       "status": "partial",
       "definition": "Mean preserved independent review verdicts per PR with review records; current and numbered archives are deduplicated by head and verdict.",
       "source": "Item review files and numbered review archives",
       "coverage": {
-        "covered": 129,
+        "covered": 128,
         "total": 129
       },
       "reason": null,
@@ -314,7 +314,7 @@
       "definition": "Candidates with at least one preserved fix-needed independent review verdict; each candidate counts once.",
       "source": "Item review files and numbered review archives",
       "coverage": {
-        "covered": 160,
+        "covered": 159,
         "total": 192
       },
       "reason": null,
@@ -360,7 +360,7 @@
       "source": "Shift summaries; item command receipts",
       "coverage": {
         "covered": 0,
-        "total": 100
+        "total": 101
       },
       "reason": "Shift telemetry excludes nested workers and has no PR attribution. Command runtime is not agent time; dividing partial recent shifts by lifetime PR outcomes would be misleading.",
       "note": null
@@ -375,7 +375,7 @@
       "source": "Shift summaries; item command receipts",
       "coverage": {
         "covered": 0,
-        "total": 100
+        "total": 101
       },
       "reason": "Shift telemetry excludes nested workers and has no PR attribution. Command runtime is not agent time; dividing partial recent shifts by lifetime PR outcomes would be misleading.",
       "note": null
@@ -390,7 +390,7 @@
       "source": "Shift summaries; owner actions",
       "coverage": {
         "covered": 0,
-        "total": 12
+        "total": 13
       },
       "reason": "Automated launch and exit status do not establish absence of human help. Shifts have no intervention flag or linked intervention log.",
       "note": null
@@ -413,14 +413,14 @@
     "coordinator_minutes": {
       "label": "Recorded coordinator minutes",
       "group": "Efficiency",
-      "value": 350.2,
+      "value": 379.1,
       "unit": "minutes",
       "status": "partial",
       "definition": "Sum of active_minutes in saved automated-shift summaries; not full-factory cost.",
       "source": "Shift summaries",
       "coverage": {
-        "covered": 12,
-        "total": 12
+        "covered": 13,
+        "total": 13
       },
       "reason": null,
       "note": "Coordinator only. Worker sessions are excluded by the shift summarizer; telemetry covers only retained shift logs."
@@ -428,14 +428,14 @@
     "coordinator_tool_calls": {
       "label": "Recorded coordinator tool calls",
       "group": "Efficiency",
-      "value": 1007,
+      "value": 1191,
       "unit": "calls",
       "status": "partial",
       "definition": "Sum of tool_calls in saved automated-shift summaries; not full-factory cost.",
       "source": "Shift summaries",
       "coverage": {
-        "covered": 12,
-        "total": 12
+        "covered": 13,
+        "total": 13
       },
       "reason": null,
       "note": "Coordinator only. Worker sessions are excluded by the shift summarizer; telemetry covers only retained shift logs."
@@ -443,19 +443,19 @@
     "shift_completion_rate": {
       "label": "Shift completion rate",
       "group": "Factory health",
-      "value": 0.833,
+      "value": 0.846,
       "unit": "percent",
       "status": "tracked",
       "definition": "Automated shift summaries with status exactly exited 0 / summaries with a recorded terminal status. Failed starts count against completion.",
       "source": "Shift summaries: status",
       "coverage": {
-        "covered": 12,
-        "total": 12
+        "covered": 13,
+        "total": 13
       },
       "reason": null,
       "note": null,
-      "numerator": 10,
-      "denominator": 12
+      "numerator": 11,
+      "denominator": 13
     },
     "factory_test_count": {
       "label": "Factory test count",
@@ -559,15 +559,15 @@
         "week": "2026-10-26",
         "opened": 68,
         "merged": 45,
-        "open_submission_cohort": 7,
-        "cohort_merged": 56,
-        "cohort_concluded": 61,
+        "open_submission_cohort": 6,
+        "cohort_merged": 57,
+        "cohort_concluded": 62,
         "first_round_numerator": 38,
         "first_round_denominator": 65,
         "history_covered": 68,
         "history_total": 68,
-        "merge_rate": 0.9180327868852459,
-        "closed_unmerged_share": 0.08196721311475409,
+        "merge_rate": 0.9193548387096774,
+        "closed_unmerged_share": 0.08064516129032258,
         "median_lead_hours": 1.442,
         "lead_time_samples": 68,
         "review_fix_hours": 0.914,
@@ -618,7 +618,7 @@
       {
         "week": "2026-11-16",
         "opened": 0,
-        "merged": 1,
+        "merged": 2,
         "open_submission_cohort": 0,
         "cohort_merged": 0,
         "cohort_concluded": 0,
@@ -642,8 +642,8 @@
         "total": 129
       },
       "merge_dates": {
-        "covered": 100,
-        "total": 100
+        "covered": 101,
+        "total": 101
       }
     }
   },
@@ -655,8 +655,8 @@
   "population": {
     "prs": 129,
     "items": 192,
-    "shift_summaries": 12,
-    "command_receipts": 389
+    "shift_summaries": 13,
+    "command_receipts": 497
   },
   "methodology": [
     "Read-only snapshot of retained local evidence. No GitHub refresh is performed.",
