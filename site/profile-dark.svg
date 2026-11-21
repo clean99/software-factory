@@ -14,9 +14,9 @@
 <text class="mono" x="303" y="124" font-size="40" font-weight="700" letter-spacing="-1" fill="#e6edf3">77%</text>
 <text class="sans" x="303" y="146" font-size="13" font-weight="600" fill="#e6edf3">merge rate</text>
 <text class="sans" x="303" y="163" font-size="11.5" fill="#8b949e">96 of 124 opened 14+ days ago</text>
-<text class="mono" x="577" y="124" font-size="40" font-weight="700" letter-spacing="-1" fill="#e6edf3">72%</text>
+<text class="mono" x="577" y="124" font-size="40" font-weight="700" letter-spacing="-1" fill="#e6edf3">71%</text>
 <text class="sans" x="577" y="146" font-size="13" font-weight="600" fill="#e6edf3">merged without rework</text>
-<text class="sans" x="577" y="163" font-size="11.5" fill="#8b949e">68 of 95 merges</text>
+<text class="sans" x="577" y="163" font-size="11.5" fill="#8b949e">68 of 96 merges</text>
 <path d="M28 174H852" stroke="#30363d" stroke-width="1"/>
 <text class="mono mark" x="28" y="198" font-size="12" font-weight="700" fill="#ff8a3d" style="animation-delay:0s">&gt;</text>
 <g class="row" style="animation-delay:0s"><text class="mono" x="42" y="198" font-size="12" font-weight="700" letter-spacing=".6" fill="#e6edf3">scout</text><text class="sans" x="98" y="198" font-size="12" fill="#e6edf3">reads a problem someone reported</text></g>

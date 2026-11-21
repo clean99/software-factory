@@ -1,29 +1,23 @@
 {
   "schema_version": 4,
-  "generated_at": "2026-11-21T11:20:32+00:00",
+  "generated_at": "2026-11-21T11:28:42+00:00",
   "activity": {
     "zone": "Asia/Singapore",
-    "as_of": "2026-11-20T09:34:23+00:00",
-    "as_of_local_date": "2026-11-20",
+    "as_of": "2026-11-21T11:27:52+00:00",
+    "as_of_local_date": "2026-11-21",
     "observation": {
-      "ok": false,
-      "checked_at": "2026-11-20T09:34:23+00:00",
-      "error": "not_checked"
+      "ok": true,
+      "checked_at": "2026-11-21T11:27:52+00:00",
+      "error": null
     },
     "today": {
-      "date": "2026-11-20",
+      "date": "2026-11-21",
       "opened": 0,
-      "merged": 0,
+      "merged": 1,
       "closed_unmerged": 0,
       "partial": true
     },
     "days": [
-      {
-        "date": "2026-10-24",
-        "opened": 0,
-        "merged": 0,
-        "closed_unmerged": 0
-      },
       {
         "date": "2026-10-25",
         "opened": 13,
@@ -185,14 +179,20 @@
         "opened": 0,
         "merged": 0,
         "closed_unmerged": 0
+      },
+      {
+        "date": "2026-11-21",
+        "opened": 0,
+        "merged": 1,
+        "closed_unmerged": 0
       }
     ],
     "window_days": 28,
     "totals": {
       "opened": 129,
-      "merged": 100,
+      "merged": 101,
       "closed_unmerged": 10,
-      "open": 19,
+      "open": 18,
       "first_opened_local_date": "2026-10-25",
       "projects_with_merges": 19
     },
@@ -204,7 +204,7 @@
     "replacements": {
       "pairs": 0
     },
-    "reopened": 0,
+    "reopened": 4,
     "reconciliation": {
       "ok": true,
       "opened": 129,
@@ -310,19 +310,19 @@
     "merged_no_rework_share": {
       "label": "Merged without rework",
       "group": "Outcome",
-      "value": 0.716,
+      "value": 0.708,
       "unit": "percent",
-      "status": "partial",
+      "status": "tracked",
       "definition": "Merged without rework: merged with no formal change request, no content change pushed by the author after opening, and no repair by a maintainer before merging / merged. Uses cohort merges with complete cached histories. Unclassified maintainer edits count against the share. Maintainer scope changes, refactors, style changes, tests, release notes, bot commits and base merges are recorded and do not count; merge-from-base commits are excluded.",
       "source": "Saved role-only PR history; validated outcome classifications",
       "coverage": {
-        "covered": 95,
+        "covered": 96,
         "total": 96
       },
       "reason": null,
       "note": "Incomplete merged histories are excluded from this denominator and reduce coverage. Commit dates proxy ordinary push times; force-push times are exact.",
       "numerator": 68,
-      "denominator": 95,
+      "denominator": 96,
       "unclassified_edits": 0
     },
     "decided_merge_rate": {
@@ -641,7 +641,7 @@
       "source": "Owner action notes; delegated account-operation records",
       "coverage": {
         "covered": 0,
-        "total": 70
+        "total": 71
       },
       "reason": "Owner action notes mix requests, resolutions and delegated work; account-operation logs record agent actions, not manual interventions. They cannot be counted as human actions.",
       "note": null
@@ -874,8 +874,8 @@
     "last_opened": "2026-11-06",
     "merged": 96,
     "merged_no_rework": 68,
-    "merged_reworked": 27,
-    "merged_unverified": 1,
+    "merged_reworked": 28,
+    "merged_unverified": 0,
     "maintainer_edits_neutral": 16,
     "closed": 10,
     "open": 18,
@@ -1733,9 +1733,11 @@
       "number": 9669,
       "opened": "2026-10-31",
       "in_cohort": true,
-      "bucket": "merged_unverified",
-      "reason": null,
-      "flags": [],
+      "bucket": "merged_reworked",
+      "reason": "author-update",
+      "flags": [
+        "author-update"
+      ],
       "evidence": null,
       "edit_class": null
     },
@@ -2583,7 +2585,7 @@
     "merged_reworked": [
       {
         "key": "author-update",
-        "n": 12,
+        "n": 13,
         "pull_requests": [
           "https://github.com/arize-ai/phoenix/pull/17255",
           "https://github.com/arize-ai/phoenix/pull/17283",
@@ -2594,6 +2596,7 @@
           "https://github.com/assistant-ui/assistant-ui/pull/10286",
           "https://github.com/assistant-ui/assistant-ui/pull/10298",
           "https://github.com/assistant-ui/assistant-ui/pull/10312",
+          "https://github.com/meta/lexical/pull/9669",
           "https://github.com/rollup/rollup/pull/6625",
           "https://github.com/rollup/rollup/pull/6628",
           "https://github.com/webpro-nl/knip/pull/2302"
@@ -2732,7 +2735,11 @@
     ]
   },
   "reconciliation": {
-    "status": "not_checked"
+    "checked_at": "2026-11-21T11:27:52+00:00",
+    "github": 129,
+    "ledger": 129,
+    "github_only": 0,
+    "ledger_only": 0
   },
   "improvements": [
     {
