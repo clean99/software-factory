@@ -9,7 +9,7 @@ import re
 
 from factory.core import checks, slop, verdicts
 from factory.core.verdicts import VERDICT, REVIEWER, REVIEWED_SHA, recommitted
-from factory.util import CONFIG, CommandError, gh_json, gh_paginate, git, hours_since, iso, issue_number, read_json, run as sh, write_json
+from factory.util import CONFIG, CommandError, RateLimited, gh_json, gh_paginate, git, hours_since, iso, issue_number, read_json, run as sh, write_json
 
 WHO_HITS = re.compile(r"^\W*who[ -]hits[ -]it\b[^:]*:\s*(\S.{9,})", re.I | re.M)
 IMPACT = re.compile(r"^\W*(?:user[ -])?impact\b[^:]*:\s*(\S.{9,})", re.I | re.M)
@@ -312,25 +312,36 @@ def oss_checks(item, rep):
     if not q or hours_since(q["at"]) > CONFIG["limits"]["qualify_max_age_hours"]:
         try:
             q = qualify.run(meta["repo"], meta.get("issue"), meta.get("keywords", []), meta.get("target", "issue"))
+        except RateLimited as error:
+            # Quota paces the work; it says nothing about the issue, so nothing is saved and nothing suggests dropping it.
+            rep.add("issue still free", False, f"not checked: {error}",
+                    "wait for the GitHub reset shown and rerun; this is not a reason to drop or park the item")
+            q = None
         except (CommandError, ValueError) as error:
             q = {"verdict": "skip", "at": iso(), "skip": [f"qualification lookup failed: {error}; check the issue reference and retry"]}
         else:
             write_json(item.file("qualify.json"), q)
-    rep.add("issue still free", q["verdict"] == "ok", "; ".join(q.get("skip", [])) or f"checked {q['at']}",
-            "someone else owns it now; drop the item or coordinate on the issue")
-    for w in q.get("warn", [])[:5]:
-        rep.warn("issue", w)
+    if q is not None:
+        rep.add("issue still free", q["verdict"] == "ok", "; ".join(q.get("skip", [])) or f"checked {q['at']}",
+                "someone else owns it now; drop the item or coordinate on the issue")
+        for w in q.get("warn", [])[:5]:
+            rep.warn("issue", w)
 
-    p = read_json(item.file("policy.json"))
-    if not p or p.get("version", 1) < policy.VERSION:
-        p = policy.run(meta["repo"])
+    p, replaced = policy.for_item(read_json(item.file("policy.json")), meta["repo"])
+    if replaced:
         write_json(item.file("policy.json"), p)
     flags = p.get("flags", {})
     rep.add("outside contributors accepted", "collaborators_only" not in flags, "; ".join(flags.get("collaborators_only", [])[:2]) or "no collaborator-only rule found",
             "the repo only takes PRs from collaborators; drop the item or offer the finding as an issue")
-    blocked = policy.blockers(p)
-    rep.add("AI policy allows it", not blocked, "; ".join(blocked) or "no automation restriction found",
-            "drop repos that ban or restrict automated contributions")
+    blocked, endorsed = policy.blockers(p), policy.endorsed(p)
+    if blocked:
+        detail = "; ".join(blocked)
+    elif endorsed:
+        detail = f"the owner's standing endorsement covers {len(endorsed)} AI-policy rule(s)"
+    else:
+        detail = "no automation restriction found"
+    rep.add("AI policy allows it", not blocked, detail,
+            "drop repos that ban or restrict automated contributions beyond what the owner's recorded endorsement covers")
     if not meta.get("pr_url"):
         from factory.oss.disclosure import new_pr_body
         from factory.core.slop import parse_pr_md

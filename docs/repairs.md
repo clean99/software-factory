@@ -45,6 +45,8 @@ Known leads, never a waiver by name:
 | Any / cancelled duplicate run | The latest completed run of the same workflow/check must pass; ties and missing timestamps are not proof. |
 | Knip / TypeScript matrix | Run the exact failing TypeScript version and CI command; the default local version does not cover a TypeScript 5.0.4 failure. |
 
+External, base, authorization, secret and awaiting-approval failures are classified in the ack and nowhere else: post no public status note, no CI-status explanation and no maintainer ping (owner, 2026-11-25). A public reply answers only a problem, question or change request that a person or bot raised.
+
 Failures in our changed files are ours until evidence shows otherwise. Reproduce the exact CI step, fix on the same branch, capture the checks, obtain fresh independent and coordinator review, and use the open-PR update path below. Do not merge main or bump a silent PR just to make checks green.
 
 ## Stale PR head
@@ -149,5 +151,5 @@ On Monday in UTC+8, next requests influence, sync retro, a dated docs/retro page
 - Followup uses the latest completed check per workflow; ties or untimed runs remain failing. Unresolved bot threads whose latest response is ours wait for the next external reply rather than generating another reply.
 - The outgoing scanner examines merge changes relative to every parent and excludes only proven-public revisions. Never extend those exclusions to a local stacked branch to make a scan pass.
 - When merging factory branches, duplicate additions are retained only inside explicitly marked CLI registration blocks and only when both commands are still needed. Resolve every other conflict by hand and run the repository suite before any push.
-- The scout and value-review cards own candidate freshness, maintainer invitation, policy and collision checks. At most the configured max_hunts_per_shift are started; no qualifying candidate is a normal result. Explore only active exploration lanes when the depth conditions in lines/oss/policy.md hold, at most once per shift and within the first-merge caps.
+- The scout and value-review cards own candidate freshness, maintainer invitation, policy and collision checks. Each active lane is scouted at most once per shift, with no count cap or cooldown; no qualifying candidate is a normal result. Explore active exploration lanes when the depth conditions in lines/oss/policy.md hold; there is no open-PR count cap.
 - Actual execution provenance comes from transcripts. A worker's claim about its model is not proof. Every release still needs coordinator review regardless of the route.

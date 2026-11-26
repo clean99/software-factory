@@ -7,7 +7,8 @@ from factory.util import CONFIG, iso, parse_iso, path_from_config, read_json, wr
 
 DONE = {"merged", "closed", "abandoned"}
 STATUSES = ("submitted", "in-review", "community-review", "changes-requested", "ci-failing", "awaiting-cla", "silent", "merged", "closed", "abandoned")
-OBSERVED_FIELDS = frozenset({"status", "last_check", "feedback_since", "checks", "responded", "merged_at", "closed_at", "silent", "cla_state", "head_sha"})
+OBSERVED_FIELDS = frozenset({"status", "last_check", "feedback_since", "checks", "responded", "maintainer_answered_at", "merged_at",
+                             "closed_at", "silent", "cla_state", "head_sha", "inline_pending", "bot_pending", "waiting_on", "mergeable"})
 
 
 def load():
@@ -22,6 +23,47 @@ def save(rows):
 
 def find(rows, url):
     return next((r for r in rows if r.get("url") == url), None)
+
+
+def pr_key(repo, url):
+    """One identity per pull request, across repository renames and URL spellings."""
+    from factory.core.repos import canonical
+
+    tail = url.rstrip("/").rsplit("/", 1)[-1]
+    number = int(tail) if tail.isdigit() else url
+    return canonical(repo).lower(), number
+
+
+def opened_on(day, rows=None):
+    """Pull requests in other people's repositories first submitted on this Asia/Singapore day, each counted once."""
+    from zoneinfo import ZoneInfo
+
+    from factory.core.metrics import ACTIVITY_ZONE
+
+    zone = ZoneInfo(ACTIVITY_ZONE)
+    own = CONFIG["github_user"].lower() + "/"
+    found = set()
+    for row in load() if rows is None else rows:
+        url, repo, at = row.get("url"), row.get("repo"), row.get("submitted_at")
+        if url and repo and at and not repo.lower().startswith(own) and parse_iso(at).astimezone(zone).date() == day:
+            found.add(pr_key(repo, url))
+    return found
+
+
+def opened(rows=None):
+    """Pull requests in other people's repositories with their first submission time, each counted once."""
+    own = CONFIG["github_user"].lower() + "/"
+    found = {}
+    for row in load() if rows is None else rows:
+        url, repo, at = row.get("url"), row.get("repo"), row.get("submitted_at")
+        if url and repo and at and not repo.lower().startswith(own):
+            found.setdefault(pr_key(repo, url), parse_iso(at))
+    return found
+
+
+def opened_since(start, rows=None):
+    """Pull requests in other people's repositories first submitted at or after start, each once, with that time."""
+    return {key: at for key, at in opened(rows).items() if at >= start}
 
 
 @contextlib.contextmanager

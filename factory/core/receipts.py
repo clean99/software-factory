@@ -66,9 +66,19 @@ def clean(receipt):
             and receipt.get("tracked_dirty_before") is False and receipt.get("tracked_dirty_after") is False)
 
 
+def restore_home(text):
+    """Reverse scrub_home() for a stored cwd, wherever the home directory appeared in it.
+
+    When the home directory is a symlink, the resolved cwd contains the home
+    path in its middle rather than as a prefix, so "~" is not always leading.
+    """
+    home = str(pathlib.Path.home())
+    return str(text).replace("~", home)
+
+
 def command_cwd(item, cwd=None):
     clone = item.clone.resolve()
-    path = pathlib.Path(cwd).expanduser() if cwd else clone
+    path = pathlib.Path(restore_home(cwd)) if cwd else clone
     return (path if path.is_absolute() else clone / path).resolve()
 
 

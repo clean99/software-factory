@@ -67,7 +67,8 @@ const promptFor = (task, role, item) => {
   if (task.note) command.push('--task', quote(task.note))
   const fields = role.includes('review') ? 'item, head, verdict, summary, complete' : 'item, head, verdict, summary'
   const files = "The item's validation.md, verify.md, interview.md, pr.md and proposal.md are deliverables: " +
-    'the coordinator asks you to edit the existing files in place. Create no other Markdown files.'
+    'the coordinator asks you to edit the existing files in place. Create no other Markdown reports in the item; ' +
+    'Markdown the upstream project requires in the change itself, such as a .changeset entry, is part of the code.'
   const evidence = role === 'scout' ? ' Keep raw API dumps and tree listings out of tracked paths: use a local scratch directory or the ignored runs/<date>/<shift>/artifacts/ directory. Record only the evidence you cite, with source URLs and concise excerpts, in curated item or shift records outside artifacts/.' : ''
   return `Run this command, follow the brief it prints, then return only {${fields}}. ${files}${evidence}\n${command.join(' ')}`
 }

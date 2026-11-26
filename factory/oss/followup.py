@@ -17,6 +17,9 @@ from factory.util import CONFIG, GH_READ_TIMEOUT, gh_json, gh_paginate, iso, now
 FIELDS = ("state,mergedAt,mergedBy,closedAt,reviewDecision,statusCheckRollup,commits,updatedAt,mergeable,isDraft,baseRefName,"
           "headRefOid,headRepositoryOwner,headRepository,headRefName")
 REOPEN_WINDOW_DAYS = 30
+# Owner, 2026-11-25: "这种CI之类的错误不是我们的问题就不用回复了 ... 只有真人和bot指出问题我们再回".
+NO_STATUS_REPLY = ("record it internally as waiting on the repository; post no public status note and do not ping maintainers. "
+                   "Reply only when a person or bot raises a problem, question or change request")
 CONFLICT_REPAIR = ("merge the PR base into the contribution branch, preserving pushed history, then rerun tests and gate. "
                    "Rebase only when the repository's contribution rules require it; cite that rule and follow the follow brief's "
                    "explicit remote-head lease and coordinator publication steps")
@@ -33,6 +36,51 @@ AUTOMATION = re.compile(
     r"|this is an automated (?:comment|message|review))\b)",
     re.I,
 )
+
+
+# A bot's conversation comment or review body is judged by what it says, not by its format (owner, 2026-11-25: only
+# problems a person or bot raised get an answer). A file location or marker is a hint, never the deciding test.
+#   finding    raises a problem, question or change request -> bot-comment, followed like other feedback
+#   noise      a status category with nothing to answer -> stays in the BOTS line, internal only
+#   undecided  neither -> bot-unclassified, an internal triage item that still counts as factory work; never auto-replied
+BOT_FOUND = re.compile(r"```suggestion\b|(?:Outside diff range|Potential issue)[^()\n]{0,20}\(\s*[1-9]\d*\s*\)", re.I)
+# Status categories: deploy authorization, secrets and infrastructure, releases and previews, reports, summaries, and
+# CodeRabbit's pointer to findings that already live in inline threads.
+BOT_STATUS = re.compile(
+    r"attempting to deploy|authorization required|(?:deploy(?:ment)?|preview) (?:is )?ready|rejected by its provider"
+    r"|(?:actions|repository) secrets?\b|rate limit exceeded"
+    r"|changeset detected|included in version|release is available|pkg\.pr\.new|open in stackblitz"
+    r"|codecov report|\[codecov\]|coverage report|bundle size analysis|codspeed|performance report|review status for"
+    r"|\bwalkthrough\b|summari[sz]e[sd]? by|summary by|thanks for using|actionable comments posted", re.I)
+BOT_NOTHING = re.compile(r"\blgtm\b|looks good|no (?:actionable |new )?(?:issues|comments|findings|problems)\b|nothing to report"
+                         r"|\bapproved?\b|\(\s*0\s*\)|posted: 0\b"
+                         r"|thanks? (?:you )?for (?:your|the|this) (?:pr|pull request|contribution)|this is an automated", re.I)
+BOT_REQUEST = re.compile(r"\b(?:could|can|would|will) you\b|\bplease\b|\bconsider\b|\bshould(?:n't| not)?\b|\bmust\b"
+                         r"|\bneeds? to\b|\bsuggest|\?(?:\s|$)", re.I)
+BOT_DEFECT = re.compile(r"\b(?:bug|stale|wrong|incorrect|broken|breaks?|fail(?:s|ed|ing)?|crash\w*|leak\w*|invalid|regression"
+                        r"|race|unhandled|throws?|never|missing|instead of|(?:does|is|was|are|wo|ca)n'?t|(?:does|is|are|can) not"
+                        r"|cannot|undefined|overflow|typo|vulnerab\w*|unsafe|deadlock|off[- ]by[- ]one)\b", re.I)
+
+
+def bot_verdict(body):
+    """"finding", "noise" or "undecided" for a bot's conversation comment or review body."""
+    body = body or ""
+    text = pr_signals.finding_text(body)
+    if not re.search(r"\w", text):
+        return "noise"
+    if BOT_FOUND.search(body):
+        return "finding"
+    asks = BOT_REQUEST.search(text)
+    if BOT_STATUS.search(text) or (BOT_NOTHING.search(text) and not asks):
+        return "noise"
+    if asks or BOT_DEFECT.search(text):
+        return "finding"
+    # A few words with no problem or request (a label, a heading) leave nothing to judge.
+    return "undecided" if len(re.findall(r"\w+", text)) >= 4 else "noise"
+
+
+def bot_finding(body):
+    return bot_verdict(body) == "finding"
 
 
 _EVENTS = []
@@ -266,8 +314,27 @@ def run(progress=None):
                     repo_mergers(repo)
     finally:
         persist_events()
+        settle_waiting(observations)
         ledger.merge(observations)
     return actions
+
+
+def settle_waiting(observations):
+    """Add "factory" wherever the saved follow-up queue, the same projection bin/factory next dispatches from, still
+    owes feedback on the PR, so waiting_on agrees with the queue (vuejs/core #16433 kept a bot finding queued while
+    its row said maintainer, 2026-11-25)."""
+    from factory.core.nextaction import owed_ci, owed_feedback, owed_triage
+    for row in observations:
+        parties = row.get("waiting_on")
+        if not parties or "factory" in parties:
+            continue
+        try:
+            owed = owed_feedback(row) or owed_ci(row) or owed_triage(row)
+        except Exception as error:  # an unreadable queue must not hide work: count it as owed
+            event(row, "followup-error", None, {"text": f"follow-up queue could not be read: {' '.join(str(error).split())}"})
+            owed = True
+        if owed:
+            row["waiting_on"] = [p for p in parties if p != "maintainer"] + ["factory"]
 
 
 WAITING = {"awaiting-maintainer", "issue-only", "ready", "preparing"}
@@ -327,6 +394,29 @@ def waiting_issues(runs=None, progress=None):
     return actions
 
 
+def bot_comment(actions, row, response):
+    verdict = bot_verdict(response.get("body"))
+    label = "BOT COMMENT" if verdict == "finding" else "BOT COMMENT TO CLASSIFY"
+    text = f"{label} {row['url']} by {author_login(response) or '[deleted]'}: {pr_signals.finding_text(response.get('body') or '')[:160]}"
+    action(actions, row, text, source=response.get("id"), kind="bot-comment" if verdict == "finding" else "bot-unclassified",
+           body=response.get("body") or "", author_login=author_login(response), state=response.get("state"))
+
+
+def waiting_on(r, pr):
+    """Everyone the open PR waits on, so a red rollup is not read as work for us and one party never hides another:
+    "owner" (CLA), "factory" (our CI failure, requested changes, a conflict, or feedback still owed in the saved
+    follow-up queue, including CI failures not yet triaged as external) and otherwise "maintainer" (review, approval, or checks needing repository-side authorization)."""
+    if r.get("status") in ledger.DONE:
+        return None
+    parties = []
+    if r.get("status") == "awaiting-cla" or r.get("cla_state") in {"failed", "pending", "missing"}:
+        parties.append("owner")
+    if pr.get("reviewDecision") == "CHANGES_REQUESTED" or pr.get("mergeable") == "CONFLICTING" \
+            or r.get("inline_pending") or r.get("bot_pending"):
+        parties.append("factory")
+    return parties or ["maintainer"]
+
+
 def check_pr(r, me, actions):
     checked_at = iso(now())
     pr = gh_json("pr", "view", r["url"], "--json", FIELDS, timeout=GH_READ_TIMEOUT)
@@ -349,6 +439,10 @@ def check_pr(r, me, actions):
     kinds = {response_kind(x, mergers) for x in comments + reviews}
     responded = {kind: kind in kinds for kind in ("maintainer", "community", "bot")}
     r["responded"] = responded
+    # When a maintainer last answered, so the unresponsive test compares answer times, not PR creation times.
+    answers = [x.get("submittedAt") or x.get("createdAt") for x in comments + reviews if response_kind(x, mergers) == "maintainer"]
+    answers = [stamp for stamp in answers if stamp]
+    r["maintainer_answered_at"] = max(answers, key=parse_iso) if answers else None
     head = pr.get("headRefOid")
     if head:
         r["head_sha"] = head
@@ -414,7 +508,8 @@ def check_pr(r, me, actions):
         if not r.get("lesson"):
             action(actions, observed,
                 f"SILENT {r['url']}: no maintainer response in {age_days:.0f} days. Study why (size, timing, review tier, "
-                f"missing issue link, repo habits) and run bin/factory lesson add --pr {r['url']} before submitting more"
+                f"missing issue link, repo habits) and record it with bin/factory lesson add --pr {r['url']}; "
+                "its silence alone does not stop other submissions"
             )
 
     if cla:
@@ -427,10 +522,10 @@ def check_pr(r, me, actions):
                   {"text": text, "cla_state": r["cla_state"], "owner_action": owner_action, "checks": cla})
 
     if inherited:
-        action(actions, observed, f"PRE-EXISTING FAILURES {r['url']}: {', '.join(inherited)} also fail on {pr.get('baseRefName')} or on other open PRs; not caused by the PR",
+        action(actions, observed, f"PRE-EXISTING FAILURES {r['url']}: {', '.join(inherited)} also fail on {pr.get('baseRefName')} or on other open PRs; not caused by the PR; {NO_STATUS_REPLY}",
                jobs=[job for job in jobs if job["name"] in inherited], head_sha=head)
     if external:
-        action(actions, observed, f"EXTERNAL CHECKS {r['url']}: {', '.join(external)} — deploy/preview bots that need repo-side authorization or config; nothing to fix in the PR")
+        action(actions, observed, f"EXTERNAL CHECKS {r['url']}: {', '.join(external)} — deploy/preview bots that need repo-side authorization or config; nothing to fix in the PR; {NO_STATUS_REPLY}")
     if failing:
         text = f"CI FAILING {r['url']}: {', '.join(failing)} — read the logs, fix on the same branch"
         actions.append(text)
@@ -450,14 +545,18 @@ def check_pr(r, me, actions):
     bots = []
     for c in new_comments:
         kind = response_kind(c, mergers)
-        if kind == "bot":
+        if kind == "bot" and bot_verdict(c.get("body")) != "noise":
+            bot_comment(actions, observed, c)
+        elif kind == "bot":
             bots.append(c)
         else:
             action(actions, observed, f"{kind.upper()} COMMENT {r['url']} by {author_login(c) or '[deleted]'}: {(c.get('body') or '').strip()[:160]!r}",
                    source=c.get("id"), body=c.get("body") or "", author_login=author_login(c), merger_error=merger_error)
     for v in new_reviews:
         kind = response_kind(v, mergers)
-        if kind == "bot":
+        if kind == "bot" and bot_verdict(v.get("body")) != "noise":
+            bot_comment(actions, observed, v)
+        elif kind == "bot":
             bots.append(v)
         else:
             action(actions, observed, f"{kind.upper()} REVIEW {r['url']} {v['state']} by {author_login(v) or '[deleted]'}: {(v.get('body') or '').strip()[:160]!r}",
@@ -470,9 +569,16 @@ def check_pr(r, me, actions):
         for bot in bots:
             event(observed, "bots", bot.get("id"), {"text": text, "body": bot.get("body") or ""})
     if pr["state"] == "OPEN":
-        actions += pr_signals.lines(r, number, pr, lambda x: response_kind(x, mergers) == "bot",
-                                   emit=lambda kind, source, detail: event(observed, kind, source, detail))
+        threads = {}
+        actions += pr_signals.lines(r, number, pr, lambda x: response_kind(x, mergers),
+                                   emit=lambda kind, source, detail: event(observed, kind, source, detail), pending=threads)
+        # Only a complete thread read replaces the saved list; a failed read keeps the earlier one.
+        if "inline" in threads:
+            r["inline_pending"] = threads["inline"]
+            r["bot_pending"] = threads["bot"]
     r["checks"] = {"failing": failing, "pending": len(pending), "total": len(checks)}
+    r["mergeable"] = pr.get("mergeable")
+    r["waiting_on"] = waiting_on(r, pr)
     r["last_check"] = checked_at
     r["feedback_since"] = checked_at if recent_mergers is not None else feedback_since
     event(observed, "feedback-read", scan, {"merger_error": merger_error, "since": feedback_since})

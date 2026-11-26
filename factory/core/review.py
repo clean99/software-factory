@@ -512,12 +512,35 @@ def _review_duration(item, result):
     return end - start
 
 
+def _taken_over_after_last_review(item):
+    """Whether a repair takeover for the current head was decided after that head's latest review started."""
+    try:
+        head = item.head_sha()
+    except (CommandError, KeyError):
+        return False
+    started = decided = None
+    for row in timeline.events(item):
+        if not isinstance(row, dict) or row.get("head") != head:
+            continue
+        try:
+            at = parse_iso(row["at"]).timestamp()
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+        if row.get("event") == "review-started":
+            started = at if started is None else max(started, at)
+        elif row.get("event") == "takeover-decided" and row.get("decision") == "repair":
+            decided = at if decided is None else max(decided, at)
+    return decided is not None and (started is None or decided >= started)
+
+
 def needs_takeover(item):
     current = _current_review(item)
     archives = _round_records(item)
     result = current or (archives[-1] if archives else {})
     if result.get("complete") is False:
-        return True
+        # An archived incomplete review that a repair takeover has since covered waits for a fresh review instead.
+        if current or not _taken_over_after_last_review(item):
+            return True
     if verdicts.schema(item) >= 2:
         coordinator = _review_record(item.file(PARTS["coordinator"]))
         if (coordinator.get("complete") is False

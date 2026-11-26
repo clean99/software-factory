@@ -155,27 +155,65 @@ def _classify(item, entry):
     return "ship_ready", entry
 
 
-def slot(rows):
+# Statuses that say a maintainer has not answered the PR yet, and those that say one has.
+UNANSWERED = ("silent", "community-review")
+ANSWERED = ("in-review", "changes-requested")
+
+
+def maintainer_answered(row):
+    """Whether followup saw a maintainer answer on this PR, by its recorded responses or its review status."""
+    return bool((row.get("responded") or {}).get("maintainer")) or row.get("status") in ANSWERED
+
+
+def answered_since(row, oldest):
+    """Whether a maintainer acted on this PR at or after oldest: a merge or close then, or an answer recorded then.
+    An answer whose time followup has not recorded yet counts, since the history cannot rule it out, and so does a
+    close, because the ledger does not record who closed the PR."""
+    for status, field in (("merged", "merged_at"), ("closed", "closed_at")):
+        if row.get("status") == status:
+            return bool(row.get(field)) and parse_iso(row[field]) >= oldest
+    if row.get("status") in ledger.DONE or not maintainer_answered(row):
+        return False
+    when = row.get("maintainer_answered_at")
+    return not when or parse_iso(when) >= oldest
+
+
+def unresponsive(rows, at=None):
+    """Why maintainers have long left our work in this repository unanswered; empty when the history is not enough.
+
+    There is no count cap and no short wait (owner, 2026-11-22). A repository stops only when at least
+    unresponsive_min_prs of our PRs there have waited unresponsive_days or more with no maintainer response, and no
+    maintainer has acted on any of our PRs there since the oldest of them was opened (see answered_since). Fewer such
+    PRs, or any such action, is not enough history to stop it."""
     limits = CONFIG["limits"]
+    days, least = limits.get("unresponsive_days", 30), limits.get("unresponsive_min_prs", 3)
+    at = at or now()
+    waiting = []
+    for r in rows:
+        if r.get("status") in UNANSWERED and not maintainer_answered(r) and r.get("submitted_at"):
+            age = (at - parse_iso(r["submitted_at"])).total_seconds() / 86400
+            if age >= days:
+                waiting.append((parse_iso(r["submitted_at"]), age, r))
+    if len(waiting) < least:
+        return []
+    oldest = min(opened for opened, _, _ in waiting)
+    if any(answered_since(r, oldest) for r in rows):
+        return []
+    waits = ", ".join(f"#{r.get('number')} ({age:.0f} days)" for _, age, r in sorted(waiting, key=lambda w: w[0]))
+    return [f"{len(waiting)} of our PRs ({waits}) have had no maintainer response for {days}+ days, and none of our PRs "
+            f"here has been answered since {oldest.date().isoformat()}"]
+
+
+def slot(rows):
+    """A repository's standing for new work: no open-PR cap, only the long-history unresponsive test."""
     merged = [r for r in rows if r.get("status") == "merged"]
     open_rows = [r for r in rows if r.get("status") not in ledger.DONE]
-    cap = limits["max_open_prs_per_repo"] if merged else limits["max_open_prs_per_repo_before_first_merge"]
     hours = [(parse_iso(r["merged_at"]) - parse_iso(r["submitted_at"])).total_seconds() / 3600
              for r in merged if r.get("merged_at") and r.get("submitted_at")]
-    last_merge = max((parse_iso(r["merged_at"]) for r in merged if r.get("merged_at")), default=None)
-    stale_days = limits.get("stale_open_days", 3)
-    reasons = [f"#{r.get('number')} is silent" for r in rows if r.get("status") == "silent"]
-    ages = []
-    for r in open_rows:
-        if not r.get("submitted_at"):
-            reasons.append(f"#{r.get('number')} is open with no submitted_at, so its age is unknown")
-            continue
-        submitted = parse_iso(r["submitted_at"])
-        ages.append((now() - submitted).total_seconds() / 86400)
-        if ages[-1] >= stale_days and (last_merge is None or last_merge < submitted):
-            reasons.append(f"#{r.get('number')} open {ages[-1]:.1f} days with no merge since (stale_open_days {stale_days})")
+    ages = [(now() - parse_iso(r["submitted_at"])).total_seconds() / 86400 for r in open_rows if r.get("submitted_at")]
+    reasons = unresponsive(rows)
     return {
-        "repo": canonical(rows[0].get("repo")), "open": len(open_rows), "cap": cap, "free": max(cap - len(open_rows), 0),
+        "repo": canonical(rows[0].get("repo")), "open": len(open_rows),
         "merged": len(merged), "median_merge_hours": round(statistics.median(hours), 1) if hours else None,
         "oldest_open_days": round(max(ages), 1) if ages else None, "stopped": bool(reasons), "stop_reasons": reasons,
     }
@@ -189,7 +227,7 @@ def by_repo(rows):
 
 
 def repo_slots(rows):
-    """Repos that merged our work, those with a usable slot first, then by merges and merge speed."""
+    """Repos that merged our work, those not stopped first, then by merges and merge speed."""
     slots = []
     for repo, group in by_repo(rows).items():
         if not any(r.get("status") == "merged" for r in group):
@@ -198,7 +236,7 @@ def repo_slots(rows):
             slots.append(slot(group))
         except (ValueError, TypeError) as error:
             raise SystemExit(f"ledger rows for {repo} carry an unreadable date ({error}); repair them before planning") from None
-    return sorted(slots, key=lambda s: (not (s["free"] and not s["stopped"]), -s["merged"],
+    return sorted(slots, key=lambda s: (s["stopped"], -s["merged"],
                                         s["median_merge_hours"] is None, s["median_merge_hours"] or 0))
 
 

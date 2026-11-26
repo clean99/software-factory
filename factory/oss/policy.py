@@ -4,10 +4,12 @@ Heuristic by design: it prints the matching lines with their file so a person or
 the actual rule. The gate verifies issue preconditions against GitHub rather than trusting flags in item.json.
 """
 import base64
+import datetime as dt
+import pathlib
 import re
 
-from factory.oss import community
-from factory.util import CommandError, gh_json, iso
+from factory.oss import community, records
+from factory.util import CONFIG, ROOT, CommandError, gh_json, iso, parse_iso, read_json, write_json
 
 VERSION = 12
 
@@ -178,9 +180,39 @@ def automation_rules(texts):
     return flags, list(unique.values())
 
 
-def blockers(rules):
+ENDORSEMENTS = "lines/oss/ai-endorsements.json"
+_AI_WORK = r"(?:all\s+)?AI-(?:assisted|generated)\s+(?:contributions|code|changes|issues or PRs|PRs|pull requests)"
+# The complete sentences the owner's endorsement covers, matched whole after markdown is stripped. This
+# is an allowlist: a policy worded any other way stays blocked until a reviewed change adds its wording
+# here with a test.
+COVERED = [re.compile(r"^" + pattern + r"\.?$", re.I) for pattern in (
+    # disclosure, which the factory always gives
+    r"(?:please\s+)?(?:(?:contributors|you)\s+must\s+)?disclose\s+(?:AI usage|AI use|the use of AI(?: tools)?|when AI tools were used)"
+    r"(?:\s+and\s+include\s+the\s+model(?: name)?,\s+version,\s+and\s+reasoning effort(?: level)?\s+in\s+issues and PRs)?"
+    r"(?:\s+to\s+reduce\s+maintainer\s+fatigue)?",
+    r"if\s+the\s+exact\s+model\s+or\s+reasoning\s+effort(?: level)?\s+is\s+unavailable,\s+state\s+that\s+rather\s+than\s+guessing",
+    # a person's responsibility and review
+    r"(?:you are|the (?:human )?contributor is|contributors are)\s+(?:fully\s+)?responsible\s+for\s+" + _AI_WORK
+    + r"\s+(?:you|they)\s+submit",
+    r"(?:" + _AI_WORK + r"\s+)?must\s+be\s+reviewed\s+by\s+(?:a\s+human|you)(?:\s+who\s+understands\s+(?:them|it))?",
+    # closing low-quality or unreviewed AI work, and banning repeated slop
+    r"(?:low-quality or unreviewed|unreviewed or low-quality|low-quality|unreviewed)\s+AI(?:-generated)?\s+"
+    r"(?:content|PRs|pull requests|contributions|code)\s+will\s+be\s+closed(?:\s+immediately)?",
+    r"contributors\s+who\s+submit\s+repeated\s+low-quality\s+(?:\(\"slop\"\)\s+)?(?:PRs|pull requests|contributions)\s+will\s+be\s+"
+    r"banned(?:\s+without\s+prior\s+warning)?",
+    r"bans\s+may\s+be\s+lifted\s+if\s+you\s+commit\s+to\s+contributing(?:\s+to\s+\w+)?\s+in\s+accordance\s+with\s+"
+    r"(?:this|the)\s+policy(?:\s+above)?",
+    r"you\s+may\s+request\s+an\s+unban\s+via\s+our\s+\w+",
+)]
+# Section headings and bold labels allowed around covered sentences, also matched whole.
+TITLES = re.compile(r"^(?:#+\s*)?(?:AI|AI (?:usage )?polic(?:y|ies)(?: for contributors)?|AI contributions|AI assistance|AI usage|"
+                    r"(?:please )?disclose AI usage|full responsibility|quality standards|ban policy):?$", re.I)
+
+
+def hard_blockers(rules):
+    """Rules no endorsement covers: human-written prose and a ban on AI attribution outside commits."""
     flags = rules.get("flags", {})
-    found = [quote for key in ("ai_ban", "ai_restriction", "human_prose") for quote in flags.get(key, [])]
+    found = list(flags.get("human_prose", []))
     for quote in flags.get("no_ai_attribution", []):
         text = re.split(r":\d+: ", quote, maxsplit=1)[-1]
         commit_only = re.search(r"\bcommits?\b", text, re.I) and not re.search(
@@ -190,9 +222,152 @@ def blockers(rules):
     return list(dict.fromkeys(found))
 
 
-def fetch(repo, path):
+def ai_rules(rules):
+    flags = rules.get("flags", {})
+    return list(dict.fromkeys(quote for key in ("ai_ban", "ai_restriction") for quote in flags.get(key, [])))
+
+
+def endorsements(root=None):
+    return read_json(pathlib.Path(root or ROOT) / ENDORSEMENTS) or {}
+
+
+def endorsed(rules, root=None):
+    """AI-policy quotes of this repository that the owner's recorded endorsement covers, by exact text."""
+    from factory.core.repos import canonical
+
+    data = endorsements(root)
+    if not data.get("owner", {}).get("quote") or not rules.get("repo"):
+        return []
+    entry = data.get("repos", {}).get(canonical(rules["repo"]).lower(), {})
+    recorded = set(entry.get("quotes", []))
+    return [quote for quote in ai_rules(rules) if quote in recorded]
+
+
+def blockers(rules, root=None):
+    covered = set(endorsed(rules, root))
+    found = [quote for quote in ai_rules(rules) if quote not in covered] + hard_blockers(rules)
+    return list(dict.fromkeys(found))
+
+
+def _plain(part):
+    """The text of a fragment with markdown links, emphasis and code marks removed and spaces collapsed."""
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", part)
+    for mark in ("**", "__", "`"):
+        text = text.replace(mark, "")
+    return " ".join(text.split())
+
+
+def unendorsable(quote):
+    """The parts of an AI-policy quote that the owner's endorsement does not cover.
+
+    Every sentence or bullet must be one of the COVERED sentences in full; the heading and any bold
+    label must be one of the TITLES. At least one covered sentence must be present. Anything else is
+    returned, so it stays blocked.
+    """
+    body = re.split(r":\d+: ", quote, maxsplit=1)[-1].replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
+    heading, rest = "", body
+    if body.startswith("#") and ": " in body:
+        heading, rest = body.split(": ", 1)
+    beyond = [heading] if heading and not TITLES.match(heading.strip()) else []
+    covered = False
+    for part in re.split(r"(?<=[.;])\s+|(?<=[.;]\*\*)\s+|\s+[-*]\s+(?=\S)", rest):
+        part = re.sub(r"^[-*]\s+", "", part.strip())
+        if not part:
+            continue
+        text = _plain(part)
+        if any(rule.match(text) for rule in COVERED):
+            covered = True
+        elif not (re.fullmatch(r"\*\*[^*]+\*\*:?", part) and TITLES.match(text)):
+            beyond.append(part)
+    if not covered and not beyond:
+        beyond.append(body)
+    return beyond
+
+
+def endorse(rules, note, root=None):
+    """Record that the owner's standing endorsement covers this repository's current AI-policy quotes."""
+    from factory.core.repos import canonical
+
+    root = pathlib.Path(root or ROOT)
+    data = endorsements(root)
+    if not data.get("owner", {}).get("quote"):
+        raise ValueError(f"{ENDORSEMENTS} has no owner endorsement to apply")
+    note = " ".join((note or "").split())
+    if len(note) < 20:
+        raise ValueError("give the reason as a sentence: which rules ask a person to take responsibility for or review AI work")
+    hard = hard_blockers(rules)
+    if hard:
+        raise ValueError("the owner's endorsement does not cover human-written prose or a ban on AI attribution: " + "; ".join(hard))
+    quotes = ai_rules(rules)
+    if not quotes:
+        raise ValueError(f"{rules.get('repo')} has no AI-policy rule to endorse")
+    beyond = [part for quote in quotes for part in unendorsable(quote)]
+    if beyond:
+        raise ValueError("these rules do more than ask a person to take responsibility for or review AI work, "
+                         "so the owner's endorsement does not cover them: " + "; ".join(beyond))
+    key = canonical(rules["repo"]).lower()
+    data.setdefault("repos", {})[key] = {"quotes": quotes, "note": note, "at": iso(), "policy_at": rules.get("at")}
+    write_json(root / ENDORSEMENTS, data)
+    return data["repos"][key]
+
+
+def cached(read):
+    """A lookup that reads each GitHub path at most once, so one policy run and community.resolve share their reads."""
+    seen = {}
+
+    def lookup(*args):
+        if args not in seen:
+            try:
+                seen[args] = (True, read(*args))
+            except CommandError as error:
+                seen[args] = (False, error)
+        ok, value = seen[args]
+        if not ok:
+            raise value
+        return value
+    return lookup
+
+
+# The contents API returns at most this many entries per directory; a full listing may be missing files.
+LISTING_LIMIT = 1000
+
+
+def present(repo, lookup):
+    """The files and directories of the root, .github and docs, from at most three listings instead of one probe per
+    name in FILES (the 2026-11-22 audit counted about 30 core requests per policy run). None when a listing is missing
+    or may be truncated (GitHub lists at most LISTING_LIMIT entries), so the caller probes every name as before."""
+    def entries(folder):
+        try:
+            data = lookup("api", f"repos/{repo}/contents/{folder}")
+        except CommandError as error:
+            if not re.search(r"\b404\b", str(error)):
+                raise
+            return None
+        return data if isinstance(data, list) else None
+
+    root = entries("")
+    if root is None or len(root) >= LISTING_LIMIT:
+        return None
+    files, dirs = set(), set()
+
+    def add(listing):
+        for entry in listing or []:
+            if isinstance(entry, dict) and entry.get("path"):
+                (dirs if entry.get("type") == "dir" else files).add(entry["path"])
+
+    add(root)
+    for folder in (".github", "docs"):
+        if folder in dirs:
+            listing = entries(folder)
+            if listing is not None and len(listing) >= LISTING_LIMIT:
+                return None
+            add(listing)
+    return {"files": files, "dirs": dirs}
+
+
+def fetch(repo, path, lookup=None):
     try:
-        data = gh_json("api", f"repos/{repo}/contents/{path}")
+        data = (lookup or gh_json)("api", f"repos/{repo}/contents/{path}")
     except CommandError as error:
         if re.search(r"\b404\b", str(error)):
             return None
@@ -233,14 +408,22 @@ def assignment_author_exemption(text):
 
 def run(repo):
     found, flags = {}, {k: [] for k in RULES}
+    lookup = cached(gh_json)
+    tree = present(repo, lookup)
+
+    def has_dir(path):
+        return tree is None or path in tree["dirs"]
+
     templates = []
-    try:
-        listing = gh_json("api", f"repos/{repo}/contents/.github/PULL_REQUEST_TEMPLATE") or []
-        templates = [f".github/PULL_REQUEST_TEMPLATE/{f['name']}" for f in listing if f.get("type") == "file"]
-    except CommandError:
-        pass
-    texts = {path: text for path in FILES + templates if (text := fetch(repo, path)) is not None}
-    texts.update(community.resolve(repo, gh_json))
+    if has_dir(".github/PULL_REQUEST_TEMPLATE"):
+        try:
+            listing = lookup("api", f"repos/{repo}/contents/.github/PULL_REQUEST_TEMPLATE") or []
+            templates = [f".github/PULL_REQUEST_TEMPLATE/{f['name']}" for f in listing if f.get("type") == "file"]
+        except CommandError:
+            pass
+    names = FILES if tree is None else [path for path in FILES if path in tree["files"]]
+    texts = {path: text for path in names + templates if (text := fetch(repo, path, lookup)) is not None}
+    texts.update(community.resolve(repo, lookup))
     automation, formats = automation_rules(texts)
     flags.update(automation)
     for path, text in texts.items():
@@ -254,14 +437,16 @@ def run(repo):
                     if key == "ai_disclosure" and NO_AI_ATTRIBUTION.search(line):
                         key = "no_ai_attribution"
                     flags.setdefault(key, []).append(f"{path}:{n}: {line.strip()[:200]}")
-    try:
-        workflows = [w["path"] for w in gh_json("api", f"repos/{repo}/contents/.github/workflows") or []
-                     if w.get("type") == "file" and w["name"].endswith((".yml", ".yaml"))]
-    except CommandError:
-        workflows = []
+    workflows = []
+    if has_dir(".github/workflows"):
+        try:
+            workflows = [w["path"] for w in lookup("api", f"repos/{repo}/contents/.github/workflows") or []
+                         if w.get("type") == "file" and w["name"].endswith((".yml", ".yaml"))]
+        except CommandError:
+            pass
     assignment_without_exemption = False
     for path in workflows:
-        text = fetch(repo, path)
+        text = fetch(repo, path, lookup)
         if text is None:
             continue
         rules = dict(WORKFLOW_RULES)
@@ -284,21 +469,52 @@ def run(repo):
                     flags.setdefault(key, []).append(f"{path}:{n}: {line.strip()[:200]}")
     if assignment_without_exemption:
         flags.pop("linked_issue_assignment_author_exempt", None)
-    try:
-        forms = [f["path"] for f in gh_json("api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE") or []
-                 if f.get("type") == "file" and f["name"].endswith((".yml", ".yaml")) and f["name"] != "config.yml"]
-    except CommandError:
-        forms = []
+    forms = []
+    if has_dir(".github/ISSUE_TEMPLATE"):
+        try:
+            forms = [f["path"] for f in lookup("api", f"repos/{repo}/contents/.github/ISSUE_TEMPLATE") or []
+                     if f.get("type") == "file" and f["name"].endswith((".yml", ".yaml")) and f["name"] != "config.yml"]
+        except CommandError:
+            pass
     for path in forms:
         if path in texts:
             continue
-        text = fetch(repo, path)
+        text = fetch(repo, path, lookup)
         for label in required_repro(text or ""):
             flags.setdefault("repro_required", []).append(f"{path}: required field '{label}'")
-    meta = gh_json("api", f"repos/{repo}")
+    meta = lookup("api", f"repos/{repo}")
     return {
         "repo": repo, "version": VERSION, "at": iso(), "files": found, "default_branch": meta["default_branch"],
         "stars": meta["stargazers_count"], "archived": meta["archived"], "license": (meta.get("license") or {}).get("spdx_id"),
         "flags": {k: list(dict.fromkeys(v)) for k, v in flags.items() if v},
         "disclosure_formats": formats,
     }
+
+
+def current(repo, max_age_hours=None):
+    """The repository's policy scan from its record when it is younger than max_age_hours (default
+    policy_record_max_age_hours) and made by this scanner version; otherwise a new scan, saved to the record."""
+    hours = CONFIG["limits"].get("policy_record_max_age_hours", 168) if max_age_hours is None else max_age_hours
+    saved = records.load(repo, "policy")
+    if records.fresh(saved, dt.timedelta(hours=hours), version=VERSION):
+        return saved
+    return refresh(repo)
+
+
+def refresh(repo):
+    """A new policy scan, saved to the repository record so later qualification and scouting reuse it."""
+    return records.save(repo, "policy", run(repo), version=VERSION)
+
+
+def for_item(saved, repo):
+    """The scan release should use and whether it differs from the item's saved one. The newest reading younger than
+    qualify_max_age_hours from this scanner wins, whether the item's or the repository record's, so a newer upstream
+    rule found by another worker is never hidden; with neither, the policy is read again. A scan without a time is
+    treated as stale."""
+    window = dt.timedelta(hours=CONFIG["limits"]["qualify_max_age_hours"])
+    usable = [scan for scan in (saved, records.load(repo, "policy"))
+              if records.fresh(scan, window, version=VERSION)]
+    if not usable:
+        return refresh(repo), True
+    best = max(usable, key=lambda scan: parse_iso(scan["at"]))
+    return best, best is not saved

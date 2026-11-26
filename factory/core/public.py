@@ -1,4 +1,5 @@
 """Build a scanned, allowlisted public snapshot without copying private history."""
+import contextlib
 import datetime as dt
 import json
 import os
@@ -6,7 +7,9 @@ import pathlib
 import re
 import shutil
 import stat
+import sys
 import tempfile
+import time
 
 from factory.core import leaks, privacy
 from factory.util import CONFIG, ROOT, CommandError, public_destinations as destinations, run
@@ -18,6 +21,19 @@ MAX_FILE_BYTES = 2 * 1024 * 1024
 
 def policy():
     return json.loads(POLICY.read_text())
+
+
+@contextlib.contextmanager
+def phase(name):
+    """Progress goes to stderr so a timeout names its stage; stdout stays one JSON result."""
+    started = time.monotonic()
+    print(f"public: {name} started", file=sys.stderr, flush=True)
+    outcome = "failed"
+    try:
+        yield
+        outcome = "finished"
+    finally:
+        print(f"public: {name} {outcome} after {time.monotonic() - started:.1f}s", file=sys.stderr, flush=True)
 
 
 def public_path(name, rules):
@@ -343,16 +359,19 @@ def publish(clone, *, root=ROOT, config=None, rules=None, records_root=None, sui
             raise ValueError("public publish requires --clone or public.clone in local config")
         clone = pathlib.Path(clone).expanduser().resolve()
         root = pathlib.Path(root).resolve()
-        validate_clone(clone, root, rules, config)
+        with phase("clone and history validation"):
+            validate_clone(clone, root, rules, config)
         with tempfile.TemporaryDirectory(prefix="factory-public-export-") as temporary:
             tree = pathlib.Path(temporary).resolve() / "tree"
-            export = build(tree, root=root, config=config, rules=rules,
-                           records_root=records_root, suite_report=suite_report)
+            with phase("export build and tree scan"):
+                export = build(tree, root=root, config=config, rules=rules,
+                               records_root=records_root, suite_report=suite_report)
             if not export["ok"]:
                 result["findings"] = export["findings"]
                 return result
-            git(clone, "fetch", "--prune", "--no-tags", "origin", "+refs/heads/*:refs/remotes/origin/*")
-            validate_history(clone, rules, config)
+            with phase("fetch and fetched-history validation"):
+                git(clone, "fetch", "--prune", "--no-tags", "origin", "+refs/heads/*:refs/remotes/origin/*")
+                validate_history(clone, rules, config)
             remote = git(clone, "for-each-ref", "--format=%(refname)", "refs/remotes/origin")
             if "refs/remotes/origin/main" in remote.splitlines():
                 git(clone, "merge", "--ff-only", "refs/remotes/origin/main")
@@ -367,9 +386,11 @@ def publish(clone, *, root=ROOT, config=None, rules=None, records_root=None, sui
             result["changed"] = True
             snapshot_commit(clone, config)
             result["commit"] = git(clone, "rev-parse", "HEAD")
-            validate_history(clone, rules, config)
-            pushed = run([str(ROOT / "bin/factory"), "push", "-C", str(clone), "--", "origin", "main"],
-                         check=False, env=git_environment())
+            with phase("snapshot history validation"):
+                validate_history(clone, rules, config)
+            with phase("scanned push"):
+                pushed = run([str(ROOT / "bin/factory"), "push", "-C", str(clone), "--", "origin", "main"],
+                             check=False, env=git_environment())
             if pushed.returncode:
                 result["findings"] = [privacy.redact(pushed.stderr or pushed.stdout or "scanned push failed")]
             else:
@@ -387,15 +408,17 @@ def snapshot_plan(tree, *, clone=None, config=None, rules=None):
 
     tree = pathlib.Path(tree).resolve()
     repository, _ = destinations(config)
-    if scan_tree(tree, rules, config):
-        raise ValueError("snapshot input has scan findings")
+    with phase("snapshot input tree scan"):
+        if scan_tree(tree, rules, config):
+            raise ValueError("snapshot input has scan findings")
     with tempfile.TemporaryDirectory(prefix="factory-public-plan-") as temporary:
         checkout = pathlib.Path(temporary) / "snapshot"
         # Clone into a disposable bare destination too: even push preflight never addresses the source.
         destination = pathlib.Path(temporary) / "destination.git"
         if clone is not None:
             clone = pathlib.Path(clone).resolve()
-            validate_history(clone, rules, config)
+            with phase("source clone history validation"):
+                validate_history(clone, rules, config)
             run(["git", "clone", "--bare", "--no-hardlinks", "--no-local", str(clone), str(destination)],
                 env=git_environment())
         else:
@@ -411,7 +434,8 @@ def snapshot_plan(tree, *, clone=None, config=None, rules=None):
             git(checkout, "checkout", "--orphan", "main")
         sync_tree(tree, checkout)
         message = snapshot_commit(checkout, config, allow_empty=True)
-        validate_history(checkout, rules, config)
+        with phase("snapshot history validation"):
+            validate_history(checkout, rules, config)
         head = git(checkout, "rev-parse", "HEAD")
         refspec = "HEAD:refs/heads/main"
         url = f"https://github.com/{repository}.git"
@@ -419,7 +443,8 @@ def snapshot_plan(tree, *, clone=None, config=None, rules=None):
         # Reuse Git's local fast-forward proof and advertisement under the intended public URL.
         # check_push scans the actual outgoing commits; it does not contact that URL with these inputs.
         plan = [(url, flag, source, dest, summary) for _, flag, source, dest, summary in local_plan]
-        findings = publication.check_push([url, refspec], checkout, plan=plan, advertised={url: refs})
+        with phase("push preflight"):
+            findings = publication.check_push([url, refspec], checkout, plan=plan, advertised={url: refs})
         if findings:
             raise ValueError("public push preflight failed: " + "; ".join(findings))
         return {"ok": True, "dry_run": True, "repository": repository, "head": head,
@@ -435,27 +460,33 @@ def snapshot_plan(tree, *, clone=None, config=None, rules=None):
 
 def cmd_public(args):
     try:
-        options = {key: getattr(args, key) for key in ("records_root", "suite_report") if getattr(args, key, None)}
-        if args.action == "export":
-            result = build(args.out, **options)
-        else:
-            expected, _ = destinations(CONFIG)
-            if args.repo and args.repo != expected:
-                raise ValueError("--repo must match public.repository in factory.config.json")
-            if args.dry_run:
-                with tempfile.TemporaryDirectory(prefix="factory-public-export-") as temporary:
-                    tree = pathlib.Path(temporary).resolve() / "tree"
-                    result = build(tree, **options)
-                    if result["ok"]:
-                        export = result
-                        result = snapshot_plan(tree, clone=args.clone)
-                        result["export"] = export
-            else:
-                result = publish(args.clone or CONFIG.get("public", {}).get("clone"), **options)
+        with leaks.reuse():
+            result = public_result(args)
         print(json.dumps(result, indent=2))
         return 0 if result["ok"] else 1
     except (ValueError, OSError, CommandError) as error:
         raise SystemExit(privacy.redact(f"public {args.action}: {error}")) from None
+
+
+def public_result(args):
+    options = {key: getattr(args, key) for key in ("records_root", "suite_report") if getattr(args, key, None)}
+    if args.action == "export":
+        return build(args.out, **options)
+    expected, _ = destinations(CONFIG)
+    if args.repo and args.repo != expected:
+        raise ValueError("--repo must match public.repository in factory.config.json")
+    if not args.dry_run:
+        return publish(args.clone or CONFIG.get("public", {}).get("clone"), **options)
+    with tempfile.TemporaryDirectory(prefix="factory-public-export-") as temporary:
+        tree = pathlib.Path(temporary).resolve() / "tree"
+        with phase("export build and tree scan"):
+            result = build(tree, **options)
+        if not result["ok"]:
+            return result
+        # A dry run plans against an explicit --clone only; without one it plans an initial snapshot.
+        plan = snapshot_plan(tree, clone=args.clone)
+        plan["export"] = result
+        return plan
 
 
 def register(sub):

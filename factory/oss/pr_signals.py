@@ -1,14 +1,18 @@
 """What the PR view does not show on an open PR: a fork branch the PR has not picked up (assistant-ui #10286
 stayed on the old head for half an hour after a push, 2026-11-03), and unresolved inline threads opened by
-review bots, where their real findings live while their summary comments are noise."""
+review bots, where their real findings live while their summary comments are noise. Human inline threads are
+read the same way: a community or maintainer review whose summary is empty keeps its substance there
+(react-date-picker #743 lost two inline findings behind an empty COMMENTED review, 2026-11-24)."""
 import re
 from urllib.parse import quote
 
 from factory.util import CONFIG, GH_READ_TIMEOUT, CommandError, gh_json, run
 
-THREADS = ("query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number)"
-           "{reviewThreads(first:100){nodes{isResolved comments(first:1){nodes{author{login __typename} databaseId path line originalLine body}}"
-           "last:comments(last:1){nodes{author{login}}}}}}}}")
+THREADS = ("query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name){pullRequest(number:$number)"
+           "{reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}"
+           "nodes{isResolved comments(first:1){nodes{author{login __typename} authorAssociation databaseId path line originalLine body url}}"
+           "last:comments(last:1){nodes{author{login __typename} authorAssociation databaseId body url}}}}}}}")
+THREAD_PAGES = 20
 COMMENT = re.compile(r"<!--.*?-->", re.S)
 DETAILS = re.compile(r"<details\b[^>]*>(?:(?!<details\b).)*?</details\s*>", re.S | re.I)
 PICTURE = re.compile(r"<picture\b[^>]*>.*?</picture\s*>", re.S | re.I)
@@ -16,11 +20,13 @@ SUMMARY = re.compile(r"<details\b.*?<summary\b[^>]*>(.*?)</summary\s*>", re.S | 
 TAG = re.compile(r"(`[^`\n]*`)|</?[a-z][a-z0-9-]*(?:\s[^>]*)?/?>", re.I)
 
 
-def lines(r, number, pr, is_bot, emit=None):
-    """Action lines for one open PR; a failed read becomes a FOLLOWUP ERROR line and the other check still runs."""
+def lines(r, number, pr, classify, emit=None, pending=None):
+    """Action lines for one open PR; a failed read becomes a FOLLOWUP ERROR line and the other check still runs.
+    classify(response) returns "bot", "maintainer" or "community". After a complete thread read, pending["inline"]
+    holds the comment ids of human threads still waiting on us."""
     found = []
     for operation, check in (("fork-head", lambda: stale_head(r["url"], pr, emit)),
-                             ("review-threads", lambda: bot_findings(r, number, is_bot, emit))):
+                             ("review-threads", lambda: thread_findings(r, number, classify, emit, pending))):
         try:
             found += check()
         except Exception as error:
@@ -66,28 +72,71 @@ def stale_head(url, pr, emit=None):
     return [text]
 
 
-def bot_findings(r, number, is_bot, emit=None):
-    owner, name = r["repo"].split("/", 1)
-    data = gh_json("api", "graphql", "-f", f"query={THREADS}", "-f", f"owner={owner}", "-f", f"name={name}",
-                   "-F", f"number={number}", timeout=GH_READ_TIMEOUT)
-    try:
-        threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
-    except (KeyError, TypeError):
-        raise ValueError("review threads missing from the GraphQL response") from None
+def review_threads(repo, number):
+    """Every review thread of the PR, page by page; a missing page raises rather than returning a partial list."""
+    owner, name = repo.split("/", 1)
+    nodes, after = [], None
+    for _ in range(THREAD_PAGES):
+        args = ["api", "graphql", "-f", f"query={THREADS}", "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={number}"]
+        if after:
+            args += ["-f", f"after={after}"]
+        data = gh_json(*args, timeout=GH_READ_TIMEOUT)
+        try:
+            page = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+            nodes += page["nodes"]
+        except (KeyError, TypeError):
+            raise ValueError("review threads missing from the GraphQL response") from None
+        info = page.get("pageInfo") or {}
+        if not info.get("hasNextPage"):
+            return nodes
+        after = info.get("endCursor")
+        if not after:
+            raise ValueError("review threads page has more results but no cursor")
+    raise ValueError(f"review threads exceed {THREAD_PAGES} pages")
+
+
+def thread_findings(r, number, classify, emit=None, pending=None):
+    """Unresolved threads we did not answer last. Bot threads stay keyed by their first comment; a human thread is
+    keyed by its newest comment, so a reviewer's follow-up in an answered thread is new feedback."""
+    threads = review_threads(r["repo"], number)
     me = CONFIG["github_user"].lower()
-    found = []
+    found, waiting, bots = [], [], []
     for thread in threads:
         first = next(iter((thread.get("comments") or {}).get("nodes") or []), None)
-        if thread.get("isResolved") or not first or not is_bot(first) or last_author(thread) == me:
+        if thread.get("isResolved") or not first or last_author(thread) == me:
             continue
+        kind = classify(first)
         login = (first.get("author") or {}).get("login") or "[deleted]"
-        where = f"{first.get('path')}:{first.get('line') or first.get('originalLine')}"
-        text = finding_text(first.get("body") or "")[:160]
-        line = f"BOT FINDING {r['url']} by {login} {where} [comment {first.get('databaseId')}]: {text}"
+        line_no = first.get("line") or first.get("originalLine")
+        where = f"{first.get('path')}:{line_no}"
+        if kind == "bot":
+            text = finding_text(first.get("body") or "")[:160]
+            line = f"BOT FINDING {r['url']} by {login} {where} [comment {first.get('databaseId')}]: {text}"
+            found.append(line)
+            bots.append(first.get("databaseId"))
+            if emit:
+                emit("bot-finding", first.get("databaseId"), {"text": line, "body": finding_text(first.get("body") or ""),
+                                                           "path": first.get("path"), "line": line_no})
+            continue
+        newest = next(iter((thread.get("last") or {}).get("nodes") or []), None) or first
+        if classify(newest) == "bot":
+            newest = first  # a bot's note in a human thread does not replace the reviewer's words
+        # A maintainer anywhere in the thread makes it maintainer feedback.
+        kind = "maintainer" if "maintainer" in {kind, classify(newest)} else "community"
+        author = (newest.get("author") or {}).get("login") or "[deleted]"
+        body = newest.get("body") or ""
+        line = (f"{kind.upper()} INLINE {r['url']} by {author} {where} [comment {newest.get('databaseId')}]: "
+                f"{' '.join(body.split())[:160]!r}")
         found.append(line)
+        waiting.append(newest.get("databaseId"))
         if emit:
-            emit("bot-finding", first.get("databaseId"), {"text": line, "body": finding_text(first.get("body") or ""),
-                                                       "path": first.get("path"), "line": first.get("line") or first.get("originalLine")})
+            emit(f"{kind}-inline", newest.get("databaseId"),
+                 {"text": line, "body": body, "author_login": author, "path": first.get("path"),
+                  "line": line_no, "comment_id": newest.get("databaseId"),
+                  "thread_comment_id": first.get("databaseId"), "comment_url": newest.get("url") or first.get("url"),
+                  "thread_body": (first.get("body") or "") if newest is not first else ""})
+    if pending is not None:
+        pending["inline"], pending["bot"] = waiting, bots
     return found
 
 

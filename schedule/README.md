@@ -2,14 +2,14 @@
 
 `schedule/agent-shift.py daemon` is the one scheduler. It runs the daily coordinator flow and the weekly review from `schedule/schedule.json`; do not add launchd, cron, session cron, or another scheduling service.
 
-The next deployment is on a development machine (Devbox), in a separate migration task. Do not enable a replacement loop on the Mac. Both kinds use the same coordinator and sub-agent routes; exact IDs stay in `schedule.json`.
+Since 2026-11-22 the scheduler runs only on the development machine (Devbox) as the user unit `software-factory-scheduler`, and development and maintenance happen there too (`docs/handover/2026-11-22-devbox.md`). Do not start a loop on any other machine. Both kinds use the same coordinator and sub-agent routes; exact IDs stay in `schedule.json`.
 
 | Kind | Slot in Asia/Singapore | Limit | Grace |
 | --- | --- | --- | --- |
-| daily | Every day, 21:43 | 240 minutes | 90 minutes |
+| daily | Every day, 05:43, 13:43 and 21:43 | 240 minutes | 90 minutes |
 | weekly | Sunday, 22:30 | 180 minutes | 8 hours |
 
-The 08:43 slot is removed. `zoneinfo` computes slots in each kind's configured zone, regardless of the machine zone. The daily flow is in `session-shift.md`; weekly analysis and the owner-review boundary are in `weekly-review.md`. The daily coordinator may publish through the factory gates under the standing approval in `lines/oss/policy.md`. Only the legacy `run-shift.sh` / `shift-prompt.md` launcher is prepare-only and never submits, proposes, or replies. Its old launchd template is retained for history, not installed by this scheduler.
+Daily times are listed in `kinds.daily.times`, ascending; `minutes` plus `grace_minutes` must fit between consecutive slots, so a shift started within grace ends before the next one. Every contribution shift, timed or manual, aims for `limits.new_prs_per_shift_target` (10) new PRs from `factory.config.json`, counted from the run's start. The runner passes that start to its session as `FACTORY_RUN_STARTED_AT`, so a resumed session or a re-taken lease keeps one count. The target is not a ceiling and there is no daily cap; the launch prompt states the aim, and `bin/factory next` reports the shift's count against it. `zoneinfo` computes slots in each kind's configured zone, regardless of the machine zone. The daily flow is in `session-shift.md`; weekly analysis and the owner-review boundary are in `weekly-review.md`. The daily coordinator may publish through the factory gates under the standing approval in `lines/oss/policy.md`. Only the legacy `run-shift.sh` / `shift-prompt.md` launcher is prepare-only and never submits, proposes, or replies. Its old launchd template is retained for history, not installed by this scheduler.
 
 ## Inspect and run
 
@@ -18,11 +18,12 @@ python3 schedule/agent-shift.py plan
 python3 schedule/agent-shift.py plan --now 2026-11-21T08:10:00+08:00
 python3 schedule/agent-shift.py status
 python3 schedule/agent-shift.py run --kind daily
+python3 schedule/agent-shift.py run --manual --minutes 360
 ```
 
-`plan` prints the next slot, run key, enabled state, models, and limit for each kind as JSON without touching scheduler state. The CLI disables Python bytecode writes before importing factory modules, so `plan` and `doctor` also leave a fresh checkout unchanged. `--now` must carry an offset. Manual `run` uses the latest slot at or before now, not the next slot; outside grace it records a missed run rather than starting arbitrary catch-up work. `--minutes` remains available for manual runs. The claim saves this override, so a deferred run keeps its limit across configuration reloads and daemon restarts; enabled-state and grace checks still use the current configuration. The old `--name` flag is no longer accepted; names are derived from run keys so a manual name cannot overwrite another run's records.
+`plan` prints the next slot, run key, enabled state, models, and limit for each kind as JSON without touching scheduler state. The CLI disables Python bytecode writes before importing factory modules, so `plan` and `doctor` also leave a fresh checkout unchanged. `--now` must carry an offset. Manual `run` uses the latest slot at or before now, not the next slot; outside grace it records a missed run rather than starting arbitrary catch-up work. `run --manual` is for a contribution shift the owner asks for now: it claims `manual-YYYY-MM-DD-HHMM` at the current minute and takes the same `active.lock`, runner lock and lease as the timed shifts, so a timed slot that arrives meanwhile is skipped and never replayed, and the weekly review waits. It obeys the kill switch and takes no `--force-key`. `--minutes` remains available for manual runs. The claim saves this override, so a deferred run keeps its limit across configuration reloads and daemon restarts; enabled-state and grace checks still use the current configuration. The old `--name` flag is no longer accepted; names are derived from run keys so a manual name cannot overwrite another run's records.
 
-Only the later migration task may start the replacement, on the Devbox, after owner release confirmation. Keep the Mac daemon untouched during preparation. The existing Mac daemon was terminal-started and does not survive reboot; macOS privacy protection can block launchd jobs from reading `<workspace>` (lesson L-008).
+The Mac loop was retired in the 2026-11-22 migration and the Mac copy of the factory removed; macOS privacy protection had blocked launchd jobs from reading the Documents folder (lesson L-008).
 
 ## Portable runtime
 
@@ -49,7 +50,7 @@ Run doctor and both model probes on the Devbox before activation. A successful M
 
 ## Run identity and locks
 
-Daily keys are `daily-YYYY-MM-DD`, using the slot's local date. Weekly keys are `weekly-YYYY-Www`, using its ISO week-year. Before launch, the runner exclusively creates `<logs>/runs/<key>.json`. A second trigger for that key, including a manual invocation or daemon restart, prints `already claimed` and exits 0. The record transitions through `claimed`, `running`, and `finished`, `failed`, or `skipped`, retaining the reason and timestamps. A waiting weekly run remains `claimed` with `deferred_at`; waiting is not another session attempt.
+The 21:43 daily slot keeps the key `daily-YYYY-MM-DD`, so claims saved before the three-shift schedule still dedupe; the other daily slots append their local time, as in `daily-YYYY-MM-DD-0543` and `daily-YYYY-MM-DD-1343`. All daily keys use the slot's local date. Weekly keys are `weekly-YYYY-Www`, using its ISO week-year. Before launch, the runner exclusively creates `<logs>/runs/<key>.json`. A second trigger for that key, including a manual invocation or daemon restart, prints `already claimed` and exits 0. The record transitions through `claimed`, `running`, and `finished`, `failed`, or `skipped`, retaining the reason and timestamps. A waiting weekly run remains `claimed` with `deferred_at`; waiting is not another session attempt.
 
 The owner's explicit `run --kind daily --force-key` creates a separate `<key>-force-<id>` attempt. It preserves the original record and still obeys the kill switch, locks, lease, and grace. Use it only after inspecting a failed or abandoned run and confirming all its writers have stopped. Never delete run keys to retry silently.
 
@@ -65,7 +66,7 @@ Set `kinds.daily.enabled` or `kinds.weekly.enabled` to `false` to pause one kind
 
 `summary.json` includes kind, key, requested models, observed `models.main` and `models.subagent` arrays, status, and reason. Observed models come only from assistant messages in the transcript; empty arrays mean no served model was observed, never a guess from configuration. Arrays preserve fallback changes. Failures and skipped runs notify through `bin/factory notify`. The heartbeat lists each kind's enabled state, next slot with offset, last key, status, and reason.
 
-An exit 0 finishes a run only if its own shift lease is closed. Otherwise the runner resumes the same session within its attempt and time limits to finish background work. On exhaustion or timeout it stops the process group, records failure, and releases only its own lease. Weekly runs never invoke the post-daily public refresh: unreviewed weekly changes must not reach the public export.
+A session result marked `is_error` that reports an expired or missing Claude Code login (for example "OAuth session expired" or "Not logged in") stops the run at once with status `blocked: ...`, whatever the result's subtype or the exit code says: no retry can log in, so the owner has to log in on the machine (2026-11-22). An exit 0 finishes a run only if its own shift lease is closed. Otherwise the runner resumes the same session within its attempt and time limits to finish background work. On exhaustion or timeout it stops the process group, records failure, and releases only its own lease. Weekly runs never invoke the post-daily public refresh: unreviewed weekly changes must not reach the public export. The daily refresh runs `bin/factory public publish --clone <public.clone>` within 30 minutes. Its result is saved as `public_refresh` in `summary.json`, and a failure sends its own notification. That command prints each stage's start and duration to stderr. A timeout keeps the last of those lines in `public_refresh.progress`, so the record names the stage that was running. Within one command, identical bytes go to gitleaks once for the same scanner binary and rule file. Every path, ref, marker and privacy rule is still checked on every pass, and a failed scan is never reused.
 
 ## Isolated verification
 

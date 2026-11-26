@@ -125,7 +125,7 @@ class CheckRunHistory(unittest.TestCase):
         self.assertEqual(self.failing([context("ci/circleci", "FAILURE", "10:00"), context("ci/circleci", "PENDING", "10:05")])[0], ["ci/circleci"])
         actions, row = self.sweep([context("Vercel – lexical", "SUCCESS", "10:00"), context("Vercel – lexical", "FAILURE", "10:05")])
         self.assertIn(f"EXTERNAL CHECKS {URL}: Vercel – lexical — deploy/preview bots that need repo-side authorization or config; "
-                      "nothing to fix in the PR", actions)
+                      f"nothing to fix in the PR; {followup.NO_STATUS_REPLY}", actions)
         self.assertFalse(any(a.startswith("CI FAILING") for a in actions), actions)
         self.assertNotEqual(row["status"], "ci-failing")
 

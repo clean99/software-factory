@@ -7,11 +7,11 @@ Select one wanted, unclaimed change; zero candidates is a valid result. Do not i
 Task scope, repo, current policy and health, existing items and PRs.
 
 ## Steps
-1. Run `bin/factory health <repo>`.
-2. Run `bin/factory policy <repo>`.
-3. Read maintainer follow-ups, endorsed issues and unchecked tracking items in that order.
+1. Read the repository record in `ledger/repo-records/` and the repository card; reuse their policy scan and outsider-PR record while current.
+2. Find a concrete unresolved candidate first: this repository's candidates in the newest `runs/<date>/watch/` report (`bin/factory watch`), maintainer follow-ups, endorsed issues, unchecked tracking items, then real reports.
+3. For a first PR in the repository, run `bin/factory health <repo> --responsiveness`; it rejects only on a long record of unanswered outside PRs.
 4. Read every comment and closed attempt for the best candidate.
-5. Check claims, assignees, local items, our PRs, open/merged/closed and fork PRs by issue, exact phrase, symbol and file (inspect at least the last 30 open PR file lists).
+5. Check claims, assignees, local items, our PRs, open/merged/closed and fork PRs by issue, exact phrase, symbol and file; read the file lists of open PRs that touch the same area.
 6. Run `bin/factory qualify <target>`.
    For a new candidate, target is owner/repo#N or owner/repo without an issue; include `--keyword "<phrase>"` for each collision phrase and `--discussion` for a discussion in both qualify and new.
 7. Create at most one eligible item with `bin/factory new <target> --slug <slug> --kind <small|large> --implementer <identity>` only if no item already exists.
@@ -40,4 +40,4 @@ For conversion sweeps add `manifest.json`: {scope, matrix:[{type, field, directi
 45 minutes. Write partial evidence and blockers before time expires; return build, propose or drop, never invent a candidate to fill a slot.
 
 ## Never
-Continue after qualify says skip, or create a second item on retry. Treat a self-filed issue, sibling merge, hypothetical probe or error-event enum as proof that users hit this change. Reject bugs younger than 48 hours unless a maintainer invited a PR. A broad invitation is not agreement to a particular API/UX design. Keep paid-key/GPU-only verification out of a ready-to-build choice.
+Continue after qualify says skip, or create a second item on retry. Treat a self-filed issue, sibling merge, hypothetical probe or error-event enum as proof that users hit this change. Skip a report for its age alone. A broad invitation is not agreement to a particular API/UX design. Keep paid-key/GPU-only verification out of a ready-to-build choice.

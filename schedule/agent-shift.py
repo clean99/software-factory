@@ -13,6 +13,7 @@ import fcntl
 import json
 import os
 import pathlib
+import re
 import select
 import shutil
 import signal
@@ -29,7 +30,7 @@ if __name__ == "__main__":
     sys.dont_write_bytecode = True
 
 from factory.core import privacy, shiftlock
-from factory.util import load_config, path_from_config, write_json
+from factory.util import CONFIG, load_config, path_from_config, write_json
 
 HOME = pathlib.Path.home()
 SCHEDULE = ROOT / "schedule" / "schedule.json"
@@ -47,6 +48,11 @@ STARTUP = 900
 GITHUB_WAIT = 20 * 60
 GITHUB_RETRY = 30
 GITHUB_TIMEOUT = 30
+# The Devbox snapshot build alone took 206s on 2026-11-22 (one gitleaks call per exported file); 600s timed out.
+PUBLIC_TIMEOUT = 30 * 60
+# The evening slot ran alone until 2026-11-21 under the plain daily-YYYY-MM-DD key. It keeps that key, so its
+# saved claims still dedupe; every other daily slot appends its local time (daily-YYYY-MM-DD-0543).
+PLAIN_KEY_TIME = "21:43"
 RESUME = ("继续这一班（会话名 {name}）：上一段因为推理服务报错中断。先运行 `bin/factory next` 接着做；"
           "如果租约已过期，按 schedule/session-shift.md 重新开班。"
           "本人要求工厂记录直接在 main 上用 `bin/factory commit` 提交，不建临时分支。收班后的汇报要求不变。")
@@ -78,9 +84,11 @@ PROMPT = (
     "Bad-PR feedback becomes a bin/factory lessons add --status candidate entry and an owner action. "
     "Unclear feedback goes to docs/owner-actions.md with one notification; withhold new work for that project. "
     "If the inbox read fails, withhold all new contributions. Then handle existing contributions and failing CI; "
-    "then at most one qualified new contribution from permitted depth lanes. Reproduce, implement, independently review, test, "
-    "and ship only through the gates under the standing approval recorded in lines/oss/policy.md. Refresh counts. "
-    "A day with no qualified item is valid: record why. Never open low-value PRs or nudge maintainers to fill a quota."
+    "then qualified new contributions within the new-PR plan below, from permitted lanes; when every active lane is cleared "
+    "and the shift still has room, look for new repositories as schedule/session-shift.md describes. Reproduce, implement, "
+    "independently review, test, and ship only through the gates under the standing approval recorded in lines/oss/policy.md. "
+    "Refresh counts. A shortfall is valid when the closing report gives the count and the reason. Never open low-value PRs, "
+    "split work to raise the count or nudge maintainers to fill the target."
 )
 WEEKLY_PROMPT = (
     "Run the weekly review with session name {name} and run key {key}. Read AGENTS.md, docs/direction.md and "
@@ -233,12 +241,25 @@ def load_schedule(path=SCHEDULE, environ=None):
         if not isinstance(spec, dict) or type(spec.get("enabled")) is not bool:
             raise ValueError(f"{kind}.enabled must be boolean")
         ZoneInfo(spec["zone"])
-        dt.datetime.strptime(spec["time"], "%H:%M")
+        if ("time" in spec) == ("times" in spec) or (kind == "weekly" and "times" in spec):
+            raise ValueError(f"{kind} needs exactly one of time or times; weekly takes a single time")
+        times = slot_times(spec)
+        if not isinstance(times, list) or not times or not all(isinstance(text, str) for text in times):
+            raise ValueError(f"{kind}.times must be a nonempty list of HH:MM strings")
+        clocks = [clock(text) for text in times]
+        if clocks != sorted(set(clocks)):
+            raise ValueError(f"{kind}.times must be ascending HH:MM values without repeats")
         if kind == "weekly" and (type(spec.get("weekday")) is not int or not 0 <= spec["weekday"] <= 6):
             raise ValueError("weekly.weekday must be 0..6")
         for field in ("minutes", "grace_minutes"):
             if not isinstance(spec[field], (int, float)) or not 0 < spec[field] <= 10080:
                 raise ValueError(f"{kind}.{field} must be positive and at most one week")
+        # The post-shift public refresh still holds the runner lock, so it must fit as well.
+        if len(times) > 1 and spec["minutes"] + spec["grace_minutes"] + PUBLIC_TIMEOUT / 60 > min(gaps(times)):
+            raise ValueError(f"{kind}.minutes plus grace_minutes and the {PUBLIC_TIMEOUT // 60}-minute public refresh "
+                             "must fit between consecutive slots")
+        if "new_pr_targets" in spec:
+            raise ValueError(f"{kind}.new_pr_targets was replaced by limits.new_prs_per_shift_target in factory.config.json")
         if not all(isinstance(spec[field], str) and spec[field].strip() for field in ("main_model", "subagent_model")):
             raise ValueError(f"{kind} needs main_model and subagent_model")
     switch = environ.get("FACTORY_SHIFT_DISABLED", "0").lower()
@@ -247,6 +268,23 @@ def load_schedule(path=SCHEDULE, environ=None):
     config["disabled_by_environment"] = switch in {"1", "true"}
     runtime_config(config, environ)
     return config
+
+
+def slot_times(spec):
+    return spec["times"] if "times" in spec else [spec["time"]]
+
+
+def clock(text):
+    parsed = dt.datetime.strptime(text, "%H:%M")
+    if parsed.strftime("%H:%M") != text:
+        raise ValueError(f"slot time {text!r} must be written as zero-padded HH:MM")
+    return parsed.hour, parsed.minute
+
+
+def gaps(times):
+    """Minutes between consecutive slots of one day, including the wrap to the next day's first slot."""
+    minutes = [hour * 60 + minute for hour, minute in map(clock, times)]
+    return [later - earlier for earlier, later in zip(minutes, minutes[1:] + [minutes[0] + 1440])]
 
 
 def enabled(config, kind):
@@ -261,25 +299,33 @@ def slot_at(now, spec, upcoming=False):
     if now.tzinfo is None:
         raise ValueError("time must include a zone offset")
     local = now.astimezone(ZoneInfo(spec["zone"]))
-    hour, minute = map(int, spec["time"].split(":"))
-    slot = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
     step = dt.timedelta(days=7 if "weekday" in spec else 1)
-    if "weekday" in spec:
-        slot -= dt.timedelta(days=(slot.weekday() - spec["weekday"]) % 7)
-    if slot > local:
-        slot -= step
-    return slot + step if upcoming else slot
+    slots = []
+    for text in slot_times(spec):
+        hour, minute = clock(text)
+        slot = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if "weekday" in spec:
+            slot -= dt.timedelta(days=(slot.weekday() - spec["weekday"]) % 7)
+        if slot > local:
+            slot -= step
+        slots.append(slot + step if upcoming else slot)
+    return min(slots) if upcoming else max(slots)
 
 
-def run_key(kind, slot):
-    return kind + "-" + (slot.strftime("%G-W%V") if kind == "weekly" else slot.date().isoformat())
+def run_key(kind, slot, manual=False):
+    if manual:
+        return "manual-" + slot.strftime("%Y-%m-%d-%H%M")
+    if kind == "weekly":
+        return "weekly-" + slot.strftime("%G-W%V")
+    key = "daily-" + slot.date().isoformat()
+    return key if slot.strftime("%H:%M") == PLAIN_KEY_TIME else key + "-" + slot.strftime("%H%M")
 
 
 def plan(config, now):
     result = {}
     for kind, spec in config["kinds"].items():
         slot = slot_at(now, spec, upcoming=True)
-        result[kind] = {"enabled": enabled(config, kind), "configured_enabled": spec["enabled"],
+        result[kind] = {"enabled": enabled(config, kind), "configured_enabled": spec["enabled"], "times": slot_times(spec),
                         "next_slot": slot.isoformat(), "zone": spec["zone"], "run_key": run_key(kind, slot),
                         "main_model": spec["main_model"], "subagent_model": spec["subagent_model"], "minutes": spec["minutes"]}
     return result
@@ -289,11 +335,10 @@ def due_slots(now, spec, since=None):
     latest = slot_at(now, spec)
     if since is None:
         return [latest]
-    step = dt.timedelta(days=7 if "weekday" in spec else 1)
     slots = []
     while latest > since:
         slots.append(latest)
-        latest -= step
+        latest = slot_at(latest - dt.timedelta(microseconds=1), spec)
     return list(reversed(slots))
 
 
@@ -315,8 +360,8 @@ def atomic_json(path, data):
         temporary.unlink(missing_ok=True)
 
 
-def claim(directory, kind, slot, now, force=False, dry_run=False, minutes=None):
-    key = ("dry-run-" if dry_run else "") + run_key(kind, slot)
+def claim(directory, kind, slot, now, force=False, dry_run=False, minutes=None, manual=False):
+    key = ("dry-run-" if dry_run else "") + run_key(kind, slot, manual)
     if force:
         key += "-force-" + uuid.uuid4().hex[:12]
     name = "auto-" + key
@@ -445,6 +490,33 @@ def session_id(transcript):
     return found if spoke else None
 
 
+# Results no retry can fix: the machine's Claude Code login has expired or is missing (2026-11-22: two shifts spent
+# every attempt on "OAuth session expired", each reported with subtype=success).
+AUTH_FAILED = re.compile(r"Failed to authenticate|OAuth session expired|Not logged in|Please run /login|Invalid API key", re.I)
+
+
+def fatal_error(transcript, offset=0):
+    """The text of a result written after offset that no retry can fix, or None. A result with is_error set is an
+    error whatever its subtype says."""
+    try:
+        with transcript.open("rb") as stream:
+            stream.seek(offset)
+            lines = stream.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "result" or not event.get("is_error"):
+            continue
+        text = event.get("result")
+        if isinstance(text, str) and AUTH_FAILED.search(text):
+            return " ".join(text.split())[:300]
+    return None
+
+
 def spoke(transcript, offset):
     try:
         with transcript.open("rb") as stream:
@@ -558,8 +630,24 @@ def launch_status(kind, slot, deadline):
     return None
 
 
-def run_session(name, out, deadline, spec=None, kind="daily", key=None, slot=None):
+def new_pr_plan(started):
+    """This contribution shift's new-PR target, counted from the run's start. It is not a ceiling (owner, 2026-11-22)."""
+    target = CONFIG.get("limits", {}).get("new_prs_per_shift_target")
+    if target is None:
+        return ""
+    return (f" New-PR plan: this contribution shift aims for {target} qualified new PRs, counted from its start at "
+            f"{started.isoformat()}. The target is not a ceiling: keep shipping qualified work after reaching it. There "
+            "is no open-PR or exploration count cap; a repository is passed over only for an objective reason (the issue "
+            "is fixed or claimed, an explicit upstream policy, failing tests or review, or a long record of maintainers "
+            "not answering outside contributions), and that reason is recorded. Each shift has its own count: report a "
+            "shortfall with its count and reason; it does not carry to the next shift. Count only PRs actually created; "
+            "updates, retries and reopens are not new PRs. GitHub rate limits pace the work; they never disqualify a "
+            "repository.")
+
+
+def run_session(name, out, deadline, spec=None, kind="daily", key=None, slot=None, started=None):
     spec = spec or load_schedule()["kinds"][kind]
+    started = started or utcnow()
     router = None
     status, attempts = "router did not start", []
     weekly = kind == "weekly"
@@ -568,10 +656,16 @@ def run_session(name, out, deadline, spec=None, kind="daily", key=None, slot=Non
         router, port = start_router(spec)
         prompt = (WEEKLY_PROMPT if weekly else PROMPT).format(name=name, key=key)
         if slot:
-            prompt += f" Scheduled slot: {slot.isoformat()}."
+            label = "Manual start, requested by the owner" if key.startswith("manual-") else "Scheduled slot"
+            prompt += f" {label}: {slot.isoformat()}."
             if weekly:
                 prompt += " Use this slot date for the retrospective."
+        if not weekly:
+            prompt += new_pr_plan(started)
         command, env = session_command(spec, port, prompt, WEEKLY_SYSTEM.format(key=key) if weekly else SYSTEM_PROMPT)
+        if not weekly:
+            # Submit and next count this shift's new PRs from here, across resumes and a re-taken lease.
+            env[shiftlock.RUN_STARTED] = started.isoformat(timespec="seconds")
         transcript = out / "transcript.jsonl"
         resume_prompt = WEEKLY_RESUME if weekly else RESUME
         for attempt in range(1, ATTEMPTS + 1):
@@ -587,12 +681,19 @@ def run_session(name, out, deadline, spec=None, kind="daily", key=None, slot=Non
                 if blocked:
                     status = blocked
                     break
+            offset = transcript.stat().st_size if transcript.exists() else 0
             with transcript.open("ab") as stdout, (out / "stderr.txt").open("ab") as stderr:
                 session = subprocess.Popen(run, cwd=ROOT, env=env, stdout=stdout, stderr=stderr,
                                            stdin=subprocess.DEVNULL, start_new_session=True)
                 outcome = watch(session, transcript, deadline)
             attempts.append(outcome)
             status = f"exited {outcome}" if isinstance(outcome, int) else outcome
+            fatal = fatal_error(transcript, offset)
+            if fatal:
+                # Fail fast: a retry cannot log in, so stop and say what the owner has to do.
+                status = f"blocked: {fatal}; Claude Code on this machine needs the owner to log in, so no retry was made"
+                attempts[-1] = status
+                break
             pause, resume_prompt = PAUSE, WEEKLY_RESUME if weekly else RESUME
             if outcome == 0:
                 lease = shiftlock.run("status")
@@ -632,18 +733,28 @@ def refresh_public(out):
             report = max(reports, key=lambda path: (path.stat().st_mtime_ns, str(path)))
             command += ["--suite-report", str(report)]
         process = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, stdin=subprocess.DEVNULL,
-                                 timeout=600, env={**os.environ, "PATH": runtime_config()["path"], "GIT_TERMINAL_PROMPT": "0"})
+                                 timeout=PUBLIC_TIMEOUT, env={**os.environ, "PATH": runtime_config()["path"], "GIT_TERMINAL_PROMPT": "0"})
         if process.returncode:
-            raise ValueError(process.stderr or process.stdout or f"public publish exited {process.returncode}")
+            raise ValueError((process.stderr or "") + (process.stdout or "") or f"public publish exited {process.returncode}")
         result = json.loads(process.stdout)
         if not isinstance(result, dict) or result.get("ok") is not True:
             raise ValueError(process.stdout or "public publish returned no result")
         return {key: privacy.redact(value) if isinstance(value, str) else value
                 for key in ("ok", "changed", "commit", "pushed") if (value := result.get(key)) is not None}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "public publish timed out after 600s"}
+    except subprocess.TimeoutExpired as error:
+        return {"ok": False, "error": f"public publish timed out after {PUBLIC_TIMEOUT}s",
+                "progress": last_phases(error.stderr)}
     except Exception as error:
-        return {"ok": False, "error": privacy.redact(str(error))[:2000]}
+        # The publish command reports its stages before the error, so keep the end of the text.
+        return {"ok": False, "error": privacy.redact(str(error))[-2000:]}
+
+
+def last_phases(stderr, limit=3):
+    """Name the stage a timed-out public publish reached from its stderr progress lines."""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", "replace")
+    lines = [line for line in (stderr or "").splitlines() if line.startswith("public: ")]
+    return [privacy.redact(line) for line in lines[-limit:]]
 
 
 def notify(text, dry_run=False):
@@ -689,7 +800,8 @@ def run_shift(name, minutes, spec=None, kind="daily", key=None, slot=None):
                     status = blocked
                 else:
                     admitted = True
-                    status, attempts = run_session(name, out, started + minutes * 60, spec, kind, key, slot)
+                    status, attempts = run_session(name, out, started + minutes * 60, spec, kind, key, slot,
+                                                   dt.datetime.fromtimestamp(int(started), dt.timezone.utc))
         except (OSError, ValueError) as error:
             status = f"could not start: {error}"
         finally:
@@ -721,6 +833,8 @@ def run_shift(name, minutes, spec=None, kind="daily", key=None, slot=None):
         write_json(out / "summary.json", summary)
         line = next((row for row in reversed(summary["final"].splitlines()) if "今日合入" in row), "")
         notify(line.strip() if status == "exited 0" and line else f"shift {name}: {status}")
+        if not summary["public_refresh"].get("ok"):
+            notify(f"shift {name}: public refresh failed: {summary['public_refresh'].get('error', '')}")
     return summary
 
 
@@ -739,6 +853,8 @@ def finish_record(directory, record, spec, status, reason, dry_run=False):
 
 def defer_record(directory, record, spec, reason, dry_run=False):
     if not record.get("deferred_at") or record["status"] != "claimed":
+        # No session ran: drop the start a preflight deferral leaves, so waiting never reads as holding the runner.
+        record.pop("started_at", None)
         transition(directory, record, "claimed", "waiting: " + reason, deferred_at=record.get("deferred_at") or utcnow().isoformat())
         summary = {**record, "models": {"main": [], "subagent": []},
                    "requested_models": {"main": spec["main_model"], "subagent": spec["subagent_model"]}}
@@ -795,7 +911,8 @@ def execute_locked_claim(directory, record, config, dry_run=False):
             if summary["status"] == "deferred" and not summary["attempts"]:
                 return defer_record(directory, record, spec, summary["reason"])
             status = {"exited 0": "finished", "missed": "skipped", "disabled": "skipped"}.get(summary["status"], "failed")
-            transition(directory, record, status, summary["reason"], ended_at=summary["ended_at"])
+            # The runner and active.lock were held until now, including the public refresh after the session.
+            transition(directory, record, status, summary["reason"], ended_at=utcnow().isoformat())
             return summary
     except BlockingIOError:
         if kind == "weekly" and record["status"] == "claimed":
@@ -870,6 +987,17 @@ def heartbeat(config, directory, now, error=None):
     return result
 
 
+def running_at(directory, slot, key):
+    """The run that held the runner when this slot arrived, even if the daemon only claims the slot afterwards."""
+    for record in read_records(directory):
+        started, ended = record.get("started_at"), record.get("ended_at")
+        if record["run_key"] == key or not started or slot < dt.datetime.fromisoformat(started):
+            continue
+        if not ended or slot < dt.datetime.fromisoformat(ended):
+            return record["run_key"]
+    return None
+
+
 def scheduled_records(directory, config, now, cursors):
     """Claim all due slots, but return at most one fresh make-up run across both kinds."""
     ready = []
@@ -884,6 +1012,8 @@ def scheduled_records(directory, config, now, cursors):
                 finish_record(directory, record, spec, "skipped", "disabled")
             elif slot != slots[-1] or missed(slot, spec, now):
                 finish_record(directory, record, spec, "skipped", "missed")
+            elif kind == "daily" and (holder := running_at(directory, slot, record["run_key"])):
+                finish_record(directory, record, spec, "skipped", "arrived during " + holder)
             else:
                 ready.append(record)
         cursors[kind] = now.isoformat()
@@ -1059,6 +1189,8 @@ def main():
     run.add_argument("--kind", choices=("daily", "weekly"), default="daily")
     run.add_argument("--minutes", type=float)
     run.add_argument("--force-key", action="store_true", help="claim a new audited attempt, retaining the original key")
+    run.add_argument("--manual", action="store_true",
+                     help="start an owner-requested contribution shift now under its own manual-YYYY-MM-DD-HHMM key")
     run.add_argument("--dry-run", action="store_true")
     inspect = actions.add_parser("plan")
     inspect.add_argument("--now", help="ISO timestamp with offset")
@@ -1082,11 +1214,15 @@ def main():
             spec = config["kinds"][args.kind]
             if args.minutes is not None and not 0 < args.minutes <= 10080:
                 raise ValueError("--minutes must be positive and at most one week")
+            if args.manual and (args.kind != "daily" or args.force_key):
+                raise ValueError("--manual starts a daily contribution shift and takes no --force-key")
             directory = require_isolated_logs("dry-run") if args.dry_run else logs_dir()
             now = utcnow()
-            record = claim(directory, args.kind, slot_at(now, spec), now, args.force_key, args.dry_run, args.minutes)
+            # A manual shift starts at this minute; it shares the timed shifts' locks and never replays a skipped slot.
+            slot = now.astimezone(ZoneInfo(spec["zone"])).replace(second=0, microsecond=0) if args.manual else slot_at(now, spec)
+            record = claim(directory, args.kind, slot, now, args.force_key, args.dry_run, args.minutes, args.manual)
             if record is None:
-                print("already claimed: " + ("dry-run-" if args.dry_run else "") + run_key(args.kind, slot_at(now, spec)))
+                print("already claimed: " + ("dry-run-" if args.dry_run else "") + run_key(args.kind, slot, args.manual))
                 return 0
             result = execute_claim(directory, record, config, args.dry_run)
             while result.get("status") == "claimed" and result.get("deferred_at"):

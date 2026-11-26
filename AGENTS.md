@@ -58,13 +58,14 @@ Approval uses the owner's standing approval recorded with its quote; see `lines/
 | Command | What the code requires |
 | --- | --- |
 | ship | An unsubmitted OSS item in its owning primary checkout; release checks except issue-dependent checks and approval before issue creation; standing approval, then submit. Linked worktrees allow dry-run only. |
-| submit | Release gate before a new PR or an actual follow-up push; publication scans, and new-PR capacity, lessons and collision checks. An already-current or closed PR returns without a push, not a new release approval. |
+| submit | Release gate before a new PR or an actual follow-up push; publication scans, closed-PR lessons, the long-history unresponsive test and collision checks. An already-current or closed PR returns without a push, not a new release approval. |
 | open-issue / propose | Approval of the exact draft and prose/privacy scans. Open-issue also requires a built branch and pre-issue release checks; discussion-first `--before-fix` omits code checks. Propose checks text, not code release. |
 | reply / thread-reply | Exact-text approval and scans; by default an open PR at the recorded pushed head. Thread-reply also checks the inline destination. These commands do not run the code release gate. |
 | gh / push | Scanned fields, files and outgoing commits. Contribution-branch updates require a matching item and release gate; forced updates need an explicit remote-head lease. Generic contribution writes are refused except reviewed PR body/title edits and state repairs of our ledger-listed, non-merged PRs. Body edits use the approved `pr.md` body without its title, retaining factory-rendered disclosure for PRs created from 2026-11-20; pre-cutoff bodies stay unchanged. Own-repository writes retain content checks. |
 
 Ship and submit dry-runs do not publish, but may fetch and refresh gate, hygiene, policy and qualification caches. They are not a guarantee of no local writes.
 Repository policy still applies. Legal agreements, account/settings work and required owner-authored prose go in `docs/owner-actions.md`; notify once and continue other work. A clean scan is not publication authority.
+An upstream AI policy that only asks a person to take responsibility for, review or stand behind AI-assisted work is covered by the owner's standing endorsement (2026-11-22). The coordinator reads the live rules and records it per repository with `bin/factory policy <repo> --endorse --note '<why>'`; the command accepts only the reviewed wording in `factory/oss/policy.py`, and the gate then accepts exactly those rule texts. Bans, prior-approval rules, human-written prose and bans on AI attribution still block, and disclosure stays.
 
 ## Evidence
 

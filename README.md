@@ -17,9 +17,9 @@ and a public record of what their maintainers did with them.
 <picture><source media="(prefers-color-scheme: dark)" srcset="site/line-dark.svg"><img src="site/line-light.svg" width="960" alt="The factory line: intake, select, build, verify, gate, deliver, outcome. Select, verify and gate can take a change off the line, and outcomes come back as lessons. The current counts are in the next paragraph."></picture>
 </p>
 
-As of 2026-11-21: 129 pull requests opened since 2026-10-24 in 31 projects. 101 merged, 10 closed without merge, 18 still open. I design and operate the factory. Agents do the contributions. Code decides what may ship.
+As of 2026-11-26: 193 pull requests opened since 2026-10-24 in 63 projects. 107 merged, 10 closed without merge, 76 still open. I design and operate the factory. Agents do the contributions. Code decides what may ship.
 
-On 2026-11-21 (Asia/Singapore): 0 opened, 1 merged, 0 closed without merge.
+On 2026-11-26 (Asia/Singapore): 5 opened, 0 merged, 0 closed without merge.
 
 > [!NOTE]
 > No person reviews each pull request. The owner gave one standing approval; a gate refuses a push unless the reviews cover the code being shipped and the approval is bound to that exact commit and pull-request text.
@@ -64,7 +64,7 @@ The diagram and table describe the structured path, which dates from 2026-11-10.
 
 The owner's decisions are dated in [the policy](lines/oss/policy.md) and [the direction page](docs/direction.md): publish without per-item approval once the gates pass (2026-10-25); only changes with a real effect for a project's users (2026-11-02); the coordinator reviews every head before release (2026-11-08); say that the work is automated (2026-11-20).
 
-The checked-in schedule (schedule/schedule.json) sets one coordinator session a day at 21:43 Asia/Singapore, and one review session on Sunday at 22:30 that reads the week's outcomes and prepares changes for the owner to accept. It replaces an earlier twice-a-day setting. Since 2026-11-12 the scheduler has left 13 session summaries, 11 of them with a clean exit status; there were none from 15 to 18 November 2026. A clean exit does not mean the queue was finished, and whether a person stepped in is not recorded. A scheduled coordinator session can publish; the review session prepares changes and does not.
+The checked-in schedule (schedule/schedule.json) sets one coordinator session a day at 21:43 Asia/Singapore, and one review session on Sunday at 22:30 that reads the week's outcomes and prepares changes for the owner to accept. It replaces an earlier twice-a-day setting. Since 2026-11-12 the scheduler has left 32 session summaries, 12 of them with a clean exit status; there were none from 15 to 18 November 2026. A clean exit does not mean the queue was finished, and whether a person stepped in is not recorded. A scheduled coordinator session can publish; the review session prepares changes and does not.
 
 ## What is measured
 

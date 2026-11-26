@@ -104,16 +104,16 @@ class Plan(Workspace):
         slots = {s["repo"]: s for s in plan.run()["repo_slots"]}
         self.assertEqual(sorted(slots), ["meta/lexical", "o/other"])
         lexical = slots["meta/lexical"]
-        self.assertEqual({k: lexical[k] for k in ("open", "merged", "cap", "free", "oldest_open_days", "stopped")},
-                         {"open": 3, "merged": 1, "cap": 3, "free": 0, "oldest_open_days": 4.0, "stopped": True})
-        self.assertEqual(lexical["stop_reasons"], [f"#{n} open 4.0 days with no merge since (stale_open_days 3)" for n in (9669, 9676, 9677)])
+        self.assertEqual({k: lexical[k] for k in ("open", "merged", "oldest_open_days", "stopped")},
+                         {"open": 3, "merged": 1, "oldest_open_days": 4.0, "stopped": False})
+        self.assertEqual(lexical["stop_reasons"], [])
 
     def test_a_merge_under_the_current_name_clears_open_prs_under_the_old_one(self):
-        write_json(self.ledger, [row("facebook/lexical", 1, "in-review", ago(5)),
-                                 row("Meta/Lexical", 2, "merged", ago(3), ago(1))])
+        write_json(self.ledger, [*[row("facebook/lexical", n, "silent", ago(40)) for n in (1, 2, 3)],
+                                 row("Meta/Lexical", 4, "merged", ago(3), ago(1))])
         (lexical,) = plan.run()["repo_slots"]
-        self.assertEqual({k: lexical[k] for k in ("repo", "open", "merged", "cap", "free", "stopped")},
-                         {"repo": "meta/lexical", "open": 1, "merged": 1, "cap": 3, "free": 2, "stopped": False})
+        self.assertEqual({k: lexical[k] for k in ("repo", "open", "merged", "stopped", "stop_reasons")},
+                         {"repo": "meta/lexical", "open": 3, "merged": 1, "stopped": False, "stop_reasons": []})
 
 
 class Influence(Workspace):
@@ -153,31 +153,34 @@ class Influence(Workspace):
         self.assertEqual(report["repos"][0]["delta"], {"merged": 0, "rank": -49, "previous_rank": 50})
 
 
-class Flood(Workspace):
-    def flood(self, repo, open_names, merged_names, **limits):
-        recent = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)).isoformat()
-        opened = [{"repository": {"nameWithOwner": n}, "url": f"https://github.com/{n}/pull/{i}", "createdAt": recent}
-                  for i, n in enumerate(open_names)]
-        merged = [{"repository": {"nameWithOwner": n}, "closedAt": recent} for n in merged_names]
+class Unresponsive(Workspace):
+    def setUp(self):
+        super().setUp()
+        self.waiting = [row(name, n, "silent", ago(40)) for n, name in enumerate(
+            ("Facebook/Lexical", "meta/lexical", "Meta/Lexical"), 1)]
+        write_json(self.ledger, self.waiting)
+        no_network = patch.object(submit, "gh_json", side_effect=AssertionError("no GitHub read"))
+        no_network.start()
+        self.addCleanup(no_network.stop)
 
-        def lookup(*args):
-            self.assertEqual(args[:2], ("search", "prs"))
-            return merged if "--merged" in args else opened
-        with patch.object(submit, "gh_json", side_effect=lookup), \
-                patch.dict(CONFIG, {"limits": {**CONFIG["limits"], "max_new_prs_per_day": None, **limits}}):
-            return submit.flood_check(repo, "fixture-owner")
+    def test_unanswered_prs_under_both_names_stop_old_and_current_items(self):
+        expected = plan.unresponsive(self.waiting, at=AT)
+        self.assertEqual(len(expected), 1)
+        for name in ("facebook/lexical", "Facebook/Lexical", "meta/lexical", "Meta/Lexical"):
+            with self.subTest(name=name):
+                self.assertEqual(submit.unresponsive(name), expected)
+        self.assertEqual(submit.unresponsive("other/repo"), [])
 
-    def test_open_prs_under_the_current_name_count_against_an_item_on_the_old_name(self):
-        self.assertEqual(self.flood("facebook/lexical", ["meta/lexical"] * 3, ["meta/lexical"]),
-                         ["3 open PRs in facebook/lexical (cap 3)"])
-        self.assertEqual(self.flood("Facebook/Lexical", ["meta/lexical"], []),
-                         ["1 open PRs in Facebook/Lexical (cap 1 until the first merge)"])
+    def test_a_recent_merge_under_either_name_clears_the_same_repository(self):
+        for name in ("facebook/lexical", "Meta/Lexical"):
+            with self.subTest(name=name):
+                write_json(self.ledger, self.waiting + [row(name, 4, "merged", ago(3), ago(1))])
+                self.assertEqual(submit.unresponsive("meta/lexical"), [])
+                self.assertEqual(submit.unresponsive("facebook/lexical"), [])
 
-    def test_a_merge_under_the_old_name_gives_the_current_name_its_merged_cap(self):
-        self.assertEqual(self.flood("meta/lexical", ["meta/lexical"] * 2, ["facebook/lexical"]), [])
-        self.assertEqual(self.flood("new/repo", ["meta/lexical"], ["facebook/lexical"], max_open_prs_total=1), [])
-        self.assertEqual(self.flood("new/repo", ["other/repo"], ["facebook/lexical"], max_open_prs_total=1),
-                         ["1 open PRs in repos without a merge yet (cap 1)"])
+    def test_an_answer_in_another_repository_does_not_clear_the_pause(self):
+        write_json(self.ledger, self.waiting + [row("other/repo", 4, "in-review", ago(1))])
+        self.assertEqual(submit.unresponsive("meta/lexical"), plan.unresponsive(self.waiting, at=AT))
 
 
 class ProfileCheck(Workspace):

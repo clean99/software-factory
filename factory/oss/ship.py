@@ -74,10 +74,9 @@ def factory_checkout(path):
 
 
 def repository_policy(item):
-    """Read the gate's policy cache, refreshing a missing or outdated scan."""
-    found = read_json(item.file("policy.json"))
-    if not found or found.get("version", 1) < policy.VERSION:
-        found = policy.run(item.meta["repo"])
+    """Read the gate's policy cache, refreshing a missing, outdated or aged scan."""
+    found, replaced = policy.for_item(read_json(item.file("policy.json")), item.meta["repo"])
+    if replaced:
         write_json(item.file("policy.json"), found)
     return found
 
@@ -179,7 +178,8 @@ class Ship:
         if reason:
             raise Stop(reason + "; no issue opened and nothing approved")
         stacked = self.item.meta.get("stacked_on")
-        return "no lesson owed; flood limits leave room" + (f"; pr.md names {stacked}" if stacked else "")
+        detail = "no lesson owed; maintainers have not long left our work unanswered"
+        return detail + (f"; pr.md names {stacked}" if stacked else "")
 
     def reviewed(self):
         rep, result = gate.pre_issue(self.item)

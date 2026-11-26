@@ -2,11 +2,21 @@
 import contextlib
 import io
 import json
+import pathlib
+import sys
 import unittest
 from unittest.mock import patch
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from support import setup_module
 from factory import cli
 from factory.oss import qualify
+
+
+def setUpModule():
+    # Isolated config keeps repository records and the GitHub pause file out of the checkout.
+    setup_module(unittest)
 
 
 class QualifyCommand(unittest.TestCase):

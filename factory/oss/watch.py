@@ -15,12 +15,11 @@ FOLLOWUP = re.compile(r"\b(?:follow[ -]up|would also|another pr|edge case|feel f
 TRACKING = re.compile(r"\b(?:tracking|roadmap)\b", re.I)
 UNCHECKED = re.compile(r"^\s*-\s+\[ \]\s+\S")
 BUG = re.compile(r"\bbug\b", re.I)
-BUG_AGE = dt.timedelta(hours=48)
-FRESH_REASON = "younger than 48h, no maintainer invitation"
 PRIORITY = {"own-followup": 0, "invite": 1, "tracking-item": 2}
 HELP = ("Read-only delta scan: at most 3 GitHub calls per repo, each with a 120-second timeout. "
         "One search covers issues and merged PRs; two optional calls inspect changed files and sibling directories. "
-        "Empty watch.json defaults to active depth lanes. Bugs younger than 48 hours need a maintainer invitation.")
+        "Empty watch.json defaults to active depth lanes. A new bug report is a candidate at once; the open-PR, claim and "
+        "assignee checks decide, not its age.")
 FLAGS = re.compile(r"\b(?:bug|good[ -]first[ -]issue|help[ -]wanted|accepting[ -]prs?)\b", re.I)
 REPRO = re.compile(r"https?://(?:www\.)?(?:stackblitz\.com|codesandbox\.io|codepen\.io|github\.com)/\S+|```[^`]+```", re.I | re.S)
 FAMILY = re.compile(r"^(?:adapters?|providers?|plugins?|parsers?|converters?|resolvers?)$", re.I)
@@ -186,27 +185,23 @@ def tracking_lines(node):
 def issue_candidates(repo, node, since, until, me):
     created = timestamp(node["createdAt"])
     bug = is_bug(node)
-    fresh = bug and until - created < BUG_AGE
-    cutoff = min(since, created) if fresh else since
-    comments = thread_nodes(node["comments"], cutoff, f'issue #{node["number"]}')
+    comments = thread_nodes(node["comments"], since, f'issue #{node["number"]}')
     references = node["references"]
     if references["pageInfo"]["hasPreviousPage"]:
         raise CommandError(f'watch issue #{node["number"]} references exceed the 100-result budget; cursor retained')
     if any((event.get("source") or {}).get("state") == "OPEN" for event in references["nodes"] if event):
-        return [], []
+        return []
     if any(CLAIM.search(comment.get("body") or "") and until - dt.timedelta(days=30) < timestamp(comment["createdAt"]) <= until
            for comment in comments):
-        return [], []
+        return []
     invitations = [comment for comment in comments if maintainer(comment, me)
                    and INVITE.search(comment.get("body") or "") and timestamp(comment["createdAt"]) <= until]
     events = [created] + [timestamp(event["createdAt"]) for event in node["timelineItems"]["nodes"] if event]
-    if bug:
-        events.append(created + BUG_AGE)
     changed = any(since < event <= until for event in events)
     tracking = tracking_lines(node) if changed or since < timestamp(node["updatedAt"]) <= until else []
     fresh_invites = [comment for comment in invitations if since < timestamp(comment["createdAt"])]
     if not changed and not tracking and not fresh_invites:
-        return [], []
+        return []
 
     flags = [label for label in labels(node) if FLAGS.search(label)]
     repro = bool(REPRO.search(node.get("body") or ""))
@@ -223,8 +218,6 @@ def issue_candidates(repo, node, since, until, me):
             score = 50
         why = "unassigned bug with a reproduction link or code sample" if bug and repro else "open, unassigned; " + (", ".join(flags) or "new or reopened")
         candidates.append(candidate("issue", repo, node, score, why, until, flags=flags, has_repro=repro))
-    if fresh and not invitations:
-        return [], [{**item, "reason": FRESH_REASON} for item in candidates]
     if fresh_invites or (changed and invitations):
         comment = max(fresh_invites or invitations, key=lambda item: timestamp(item["createdAt"]))
         candidates = [item for item in candidates if item["kind"] != "issue"]
@@ -232,7 +225,7 @@ def issue_candidates(repo, node, since, until, me):
                                     source=comment["url"], quote=comment["body"], comment_url=comment["url"], comment_at=comment["createdAt"],
                                     comment_author=(comment.get("author") or {}).get("login"),
                                     comment_author_association=comment["authorAssociation"]))
-    return candidates, []
+    return candidates
 
 
 def own_followups(repo, node, since, until, me):
@@ -260,9 +253,8 @@ def own_followups(repo, node, since, until, me):
 def scan(repo, since, until, known):
     start = since.strftime("%Y-%m-%dT%H:%M:%SZ")
     me = CONFIG["github_user"].lower()
-    issue_start = (since - BUG_AGE).strftime("%Y-%m-%dT%H:%M:%SZ")
     data = graphql(QUERY, merged=f"repo:{repo} is:pr is:merged merged:>={start} -author:{me}",
-                   issues=f"repo:{repo} is:issue is:open no:assignee -linked:pr updated:>={issue_start}",
+                   issues=f"repo:{repo} is:issue is:open no:assignee -linked:pr updated:>={start}",
                    own=f"repo:{repo} is:pr is:merged author:{me} updated:>={start}")
     for name in ("merged", "issues", "own"):
         if data[name]["pageInfo"]["hasNextPage"] or data[name]["issueCount"] > 100:
@@ -276,11 +268,9 @@ def scan(repo, since, until, known):
               if node and unseen(node) and node["state"] == "OPEN" and node["assignees"]["totalCount"] == 0}
     own = [node for node in data["own"]["nodes"] if node and node.get("mergedAt") and timestamp(node["mergedAt"]) <= until
            and (node.get("author") or {}).get("login", "").lower() == me]
-    candidates, rejected = [], []
+    candidates = []
     for node in issues.values():
-        found, refused = issue_candidates(repo, node, since, until, me)
-        candidates.extend(found)
-        rejected.extend(refused)
+        candidates.extend(issue_candidates(repo, node, since, until, me))
     for node in own:
         candidates.extend(own_followups(repo, node, since, until, me))
 
@@ -313,7 +303,7 @@ def scan(repo, since, until, known):
                                         merged_at=node["mergedAt"], files=files, siblings=evidence))
     return {"merged_prs": [{**metadata(node), "merged_at": node["mergedAt"], **({"files": changes[node["number"]]} if node["number"] in changes else {})} for node in merged],
             "own_merged_prs": [{**metadata(node), "merged_at": node["mergedAt"]} for node in own],
-            "candidates": sorted(candidates, key=rank), "rejected": rejected, "sibling_directories_checked": len(trees),
+            "candidates": sorted(candidates, key=rank), "sibling_directories_checked": len(trees),
             "sibling_directories_omitted": max(0, len(targets) - MAX_DIRECTORIES) if fixes else 0}
 
 
@@ -336,7 +326,7 @@ def run(repos=None, since=None, dry_run=False):
     state_path = path_from_config("ledger_file").with_name("watch-state.json")
     state = read_json(state_path, {})
     known = known_items()
-    report = {"at": iso(until), "dry_run": dry_run, "repos": [], "candidates": [], "rejected": []}
+    report = {"at": iso(until), "dry_run": dry_run, "repos": [], "candidates": []}
     successful = {}
     for entry in watchlist:
         repo = entry["repo"]
@@ -351,7 +341,6 @@ def run(repos=None, since=None, dry_run=False):
             row.update(status="ok", **result)
             successful[repo.lower()] = iso(until)
             report["candidates"].extend({**item, "tier": entry["tier"]} for item in result["candidates"])
-            report["rejected"].extend({**item, "tier": entry["tier"]} for item in result["rejected"])
         except Exception as error:
             row.update(status="error", error=" ".join(str(error).split()))
         report["repos"].append(row)
@@ -381,7 +370,6 @@ def summary(report):
         else:
             counts = {kind: sum(item["kind"] == kind for item in row["candidates"])
                       for kind in ("sibling-fix", "issue", "invite", "own-followup", "tracking-item")}
-            counts["rejected"] = len(row.get("rejected", []))
             lines.append(f'{row["repo"]}: ' + ", ".join(f"{count} {kind}" for kind, count in counts.items()))
     for item in report["candidates"][:10]:
         title = " ".join(item["title"].split())

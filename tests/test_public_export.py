@@ -349,7 +349,25 @@ class PublicExportTests(unittest.TestCase):
         with patch.object(public, "CONFIG", self.config), patch.object(public, "build", return_value={"ok": True}), \
                 patch.object(public, "snapshot_plan", return_value={"ok": True}) as plan, redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(["public", "publish", "--dry-run"]), 0)
-        plan.assert_called_once()
+            self.assertEqual(cli.main(["public", "publish", "--dry-run", "--clone", str(self.root / "public")]), 0)
+        self.assertEqual([call.kwargs["clone"] for call in plan.call_args_list], [None, self.root / "public"])
+
+    def test_cli_progress_goes_to_stderr_and_scans_reuse_one_scope(self):
+        scopes = []
+
+        def build(out, **kwargs):
+            scopes.append(public.leaks._reuse["depth"])
+            return {"ok": True}
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(public, "CONFIG", self.config), patch.object(public, "build", side_effect=build), \
+                patch.object(public, "snapshot_plan", return_value={"ok": True}), \
+                redirect_stdout(stdout), redirect_stderr(stderr):
+            self.assertEqual(cli.main(["public", "publish", "--dry-run"]), 0)
+        self.assertEqual(json.loads(stdout.getvalue()), {"ok": True, "export": {"ok": True}})
+        self.assertEqual(scopes, [1])
+        self.assertEqual(public.leaks._reuse["depth"], 0)
+        self.assertIn("public: export build and tree scan finished after", stderr.getvalue())
 
     def test_publish_requires_clone_and_configured_repo(self):
         output = io.StringIO()

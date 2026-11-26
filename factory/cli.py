@@ -49,7 +49,10 @@ def cmd_health(a):
     from factory.oss import health
 
     for repo in a.repos:
-        emit(health.run(repo, a.days, CONFIG["github_user"]))
+        if a.responsiveness:
+            emit(health.responsiveness(repo, refresh=a.refresh))
+        else:
+            emit(health.run(repo, a.days, CONFIG["github_user"]))
 
 
 def cmd_retro(a):
@@ -73,7 +76,15 @@ def cmd_watch(a):
 def cmd_policy(a):
     from factory.oss import policy
 
-    result = policy.run(a.repo)
+    if a.note and not a.endorse:
+        raise SystemExit("--note goes with --endorse")
+    result = policy.refresh(a.repo)
+    if a.endorse:
+        try:
+            policy.endorse(result, a.note)
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
+    result["owner_endorsed"] = policy.endorsed(result)
     result["automation_blockers"] = policy.blockers(result)
     emit(result)
     return 2 if result["automation_blockers"] else 0
@@ -92,7 +103,7 @@ def cmd_qualify(a):
         result = qualify.run(a.ref, None, a.keyword, "none")
     else:
         raise SystemExit(f"expected owner/repo#number, an issue URL, or owner/repo with --keyword; got {a.ref!r}")
-    rules = policy.run(repo if "#" in normalize_ref(a.ref) else a.ref)
+    rules = policy.current(repo if "#" in normalize_ref(a.ref) else a.ref)
     blocked = policy.blockers(rules)
     if blocked:
         result["verdict"] = "skip"
@@ -167,7 +178,7 @@ def cmd_new(a):
             shutil.copy(t, destination)
     q = qualify.run(repo, num, a.keyword or [], target)
     write_json(item_dir / "qualify.json", q)
-    write_json(item_dir / "policy.json", policy.run(repo))
+    write_json(item_dir / "policy.json", policy.current(repo))
     print(f"item: {item_dir}\nclone: {clone}\nbranch: {branch} (from origin/{base})\nqualify: {q['verdict']} {q['skip'] or ''}")
     # The clone may be shared with a worker or reviewer on another branch, so it is never switched here (2026-11-08: edits landed on the wrong branch twice).
     current = git(clone, "branch", "--show-current").strip()
@@ -379,6 +390,12 @@ def cmd_reply(a):
         raise SystemExit(f"{reply.name} not approved in its current form; show it to the user and run approve-reply")
     if not meta.get("pr_url"):
         raise SystemExit("item has no pr_url; replies go on an open PR")
+    withdrawn = [r for r in meta.get("replies", []) if r.get("withdrawn_at")
+                 and (r.get("file") == reply.name or r.get("sha256") == _sha(reply))]
+    if withdrawn:
+        # A comment the owner had deleted stays deleted: no repost, no substitute (vercel/ai #24322, 2026-11-25).
+        raise SystemExit(f"{reply.name} was withdrawn on {withdrawn[0]['withdrawn_at']} ({withdrawn[0].get('withdrawn_reason', 'owner')}); "
+                         "do not repost it or post a replacement")
     fails, soft = publication_findings(item, reply.name, reply.read_text())
     if fails or len(soft) > CONFIG["limits"]["max_soft_slop_hits"]:
         raise SystemExit(f"{reply.name} fails hygiene: " + "; ".join(fails + soft))
@@ -618,10 +635,17 @@ def main(argv=None):
     s = sub.add_parser("health", help="repo merge stats and AI-flood index")
     s.add_argument("repos", nargs="+")
     s.add_argument("--days", type=int, default=30)
+    s.add_argument("--responsiveness", action="store_true",
+                   help="the first-PR test: did maintainers answer outside PRs within unresponsive_days, over a long record")
+    s.add_argument("--refresh", action="store_true", help="with --responsiveness: read GitHub again instead of the saved record")
     s.set_defaults(fn=cmd_health)
 
     s = sub.add_parser("policy", help="contribution and AI rules of a repo")
     s.add_argument("repo")
+    s.add_argument("--endorse", action="store_true",
+                   help="coordinator only: record that the owner's standing endorsement covers the repo's current AI-policy rules, "
+                        "which may only ask a person to take responsibility for or review AI work")
+    s.add_argument("--note", help="with --endorse: which rules ask for that and why nothing else is restricted")
     s.set_defaults(fn=cmd_policy)
 
     s = sub.add_parser("qualify", help="is owner/repo#N still free and worth it")

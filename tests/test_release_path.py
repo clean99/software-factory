@@ -13,18 +13,20 @@ from unittest.mock import Mock, patch
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from support import setup_module
+from support import is_pulls_read, isolated_config, rest_pulls, setup_module
 
 from factory import cli
 from factory.core import checks, gate, ledger, lessons, review as protocol, shiftlock, verdicts
 
 RUN_EXTRA = checks.run_extra
 from factory.oss import disclosure, plan, policy, qualify, ship, submit
-from factory.util import CONFIG, Item, iso, read_json, write_json
+from factory.oss.submit import preconditions as submit_preconditions
+from factory.util import CONFIG, Item, iso, parse_iso, read_json, write_json
 
 HEAD = "a" * 40
 OLD = "b" * 40
 URL = "https://github.com/example/repo/pull/7"
+SHIFT_STARTED = "2026-11-22T02:00:00+00:00"
 VERIFY = "verdict: ship\nWho hits it: reporters using the documented parser\nImpact: parsed titles are retained in the result\n"
 
 
@@ -60,6 +62,8 @@ class ReleaseCase(unittest.TestCase):
             patch("factory.util.global_hooks_drift", return_value=[]),
             patch.object(verdicts, "recommitted", return_value=False),
             patch.object(checks, "run_extra", self.extra),
+            # The new-PR count reads this checkout's lease; keep it local to the test.
+            patch.object(shiftlock, "ROOT", self.root),
         ):
             mocker.start()
             self.addCleanup(mocker.stop)
@@ -78,7 +82,7 @@ class ReleaseCase(unittest.TestCase):
             self.item.file(name).write_text(text)
         write_json(self.item.file("redgreen.json"), {"ok": True, "head_sha": HEAD, "red_exit": 1, "green_exit": 0})
         write_json(self.item.file("qualify.json"), {"at": iso(), "verdict": "ok"})
-        write_json(self.item.file("policy.json"), {"version": policy.VERSION, "flags": {}})
+        write_json(self.item.file("policy.json"), {"version": policy.VERSION, "at": iso(), "flags": {}})
         write_json(self.item.file("approval.json"), {"at": iso(), "head_sha": HEAD, "pr_sha256": verdicts.pr_sha256(self.item)})
 
     def schema2(self):
@@ -261,7 +265,18 @@ class SubmitPreview(ReleaseCase):
         self.target = Mock(return_value=[])
         self.push_scan = Mock(return_value=[])
         self.fork = Mock(return_value="fixture-owner/repo")
-        for mocker in (patch.object(submit, "gh_json", side_effect=lambda *a, **k: self.prs),
+        self.created_at = "2026-11-21T01:00:00Z"
+
+        def gh_json(*args, **kwargs):
+            if "search/issues" in args:
+                return {"total_count": 0, "incomplete_results": False, "items": []}
+            if args[:2] == ("pr", "view"):
+                return {"createdAt": self.created_at} if self.created_at else None
+            if is_pulls_read(args):
+                return rest_pulls(self.prs)
+            return self.prs
+
+        for mocker in (patch.object(submit, "gh_json", side_effect=gh_json),
                        patch.object(submit, "git", side_effect=git), patch.object(submit, "sh", self.process),
                        patch.object(submit, "preconditions", return_value=None),
                        patch.object(submit, "target_privacy", self.target), patch.object(submit, "push_privacy", self.push_scan),
@@ -289,7 +304,7 @@ class SubmitPreview(ReleaseCase):
                      "- [ ] I never used AI to prepare this contribution."):
             with self.subTest(text=text):
                 flags, formats = policy.automation_rules({".github/PULL_REQUEST_TEMPLATE.md": text})
-                write_json(self.item.file("policy.json"), {"version": policy.VERSION, "flags": flags,
+                write_json(self.item.file("policy.json"), {"version": policy.VERSION, "at": iso(), "flags": flags,
                                                          "disclosure_formats": formats})
                 result = submit.run(self.item, dry_run=True)
                 self.assertFalse(result["ok"], result)
@@ -333,7 +348,7 @@ class SubmitPreview(ReleaseCase):
         self.item.save()
         flags, formats = policy.automation_rules({".github/PULL_REQUEST_TEMPLATE.md":
             "- [ ] I used AI assistance for this contribution."})
-        scanned = {"version": policy.VERSION, "flags": flags, "disclosure_formats": formats}
+        scanned = {"version": policy.VERSION, "at": iso(), "flags": flags, "disclosure_formats": formats}
         write_json(self.item.file("policy.json"), scanned)
         outgoing = self.root / "body.txt"
         expected = disclosure.existing_pr_body("Fixes #2\n", scanned, "2026-11-20T00:00:00Z")
@@ -343,7 +358,7 @@ class SubmitPreview(ReleaseCase):
             with patch.object(publication, "release_gate", return_value=[]):
                 self.assertEqual(publication.gh_release(args, self.clone, self.folder), [])
             def refresh(*args):
-                write_json(self.item.file("policy.json"), {"version": policy.VERSION, "flags": {}})
+                write_json(self.item.file("policy.json"), {"version": policy.VERSION, "at": iso(), "flags": {}})
                 return []
             with patch.object(publication, "release_gate", side_effect=refresh):
                 self.assertTrue(publication.gh_release(args, self.clone, self.folder))
@@ -486,6 +501,192 @@ class SubmitPreview(ReleaseCase):
         self.assertIn("re-review", result["reason"])
         self.fork.assert_not_called()
 
+    def test_new_pr_records_github_creation_time(self):
+        self.prs.clear()
+        self.created_at = "2026-11-21T15:59:59Z"
+        with patch.object(qualify, "fresh_collisions", return_value={"verdict": "ok"}):
+            result = submit.run(self.item)
+        self.assertTrue(result.get("url"), result)
+        self.assertEqual(self.item.meta["submitted_at"], "2026-11-21T15:59:59Z")
+        row = submit.ledger.find(submit.ledger.load(), URL)
+        self.assertEqual(row["submitted_at"], "2026-11-21T15:59:59Z")
+
+    @contextlib.contextmanager
+    def cross_midnight_creation(self):
+        self.prs.clear()
+        current = ["2026-11-21T15:59:59Z"]
+        read_created_at = Mock(side_effect=submit.CommandError("createdAt temporarily unavailable"))
+
+        def create(args):
+            self.assertEqual(args[:3], ["gh", "pr", "create"])
+            current[0] = "2026-11-21T16:00:01Z"
+            return Mock(returncode=0, stdout=URL)
+
+        def lookup(*args, **kwargs):
+            if "search/issues" in args:
+                return {"total_count": 0, "incomplete_results": False, "items": []}
+            if is_pulls_read(args):
+                return rest_pulls(self.prs)
+            if args[:2] == ("pr", "view"):
+                return read_created_at()
+            self.fail(f"unexpected GitHub read: {args}")
+
+        self.process.side_effect = create
+        with patch.object(submit, "gh_json", side_effect=lookup), \
+                patch.object(submit, "iso", side_effect=lambda: current[0]), \
+                patch.object(submit.time, "sleep"), \
+                patch.object(qualify, "fresh_collisions", return_value={"verdict": "ok"}):
+            yield read_created_at
+
+    def test_cross_midnight_unreadable_created_at_keeps_url_without_guessing(self):
+        with self.cross_midnight_creation():
+            result = submit.run(self.item)
+        creates = [call for call in self.process.call_args_list if call.args[0][:3] == ["gh", "pr", "create"]]
+        self.assertEqual(len(creates), 1)
+        self.assertEqual(result.get("url"), URL)
+        row = ledger.find(ledger.load(), URL)
+        with self.subTest(evidence="creation time"):
+            if row is not None:
+                self.assertEqual(row.get("submitted_at"), "2026-11-21T15:59:59Z",
+                                 "the local reply time is not verified GitHub creation time")
+        with self.subTest(evidence="result"):
+            self.assertFalse(result["ok"], "an unreadable creation time must not be reported as silent success")
+
+    def test_cross_midnight_retry_recovers_creation_time_once_without_recreating(self):
+        with self.cross_midnight_creation():
+            submit.run(self.item)
+            self.prs[:] = [{"url": URL, "state": "OPEN", "createdAt": "2026-11-21T15:59:59Z"}]
+            for _ in range(2):
+                result = submit.run(Item(self.folder))
+                self.assertTrue(result["ok"], result)
+                self.assertEqual(result["url"], URL)
+        creates = [call for call in self.process.call_args_list if call.args[0][:3] == ["gh", "pr", "create"]]
+        self.assertEqual(len(creates), 1, "retry must recover the existing PR, not create another")
+        rows = [row for row in ledger.load() if row["url"] == URL]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["submitted_at"], "2026-11-21T15:59:59Z")
+        self.assertEqual(ledger.opened_on(parse_iso("2026-11-21T23:59:59+08:00").date()), {("example/repo", 7)})
+        self.assertEqual(ledger.opened_on(parse_iso("2026-11-22T00:00:05+08:00").date()), set())
+
+    def test_cross_midnight_transient_created_at_failure_retries_within_submit(self):
+        with self.cross_midnight_creation() as read_created_at:
+            read_created_at.side_effect = [submit.CommandError("createdAt temporarily unavailable"),
+                                          {"createdAt": "2026-11-21T15:59:59Z"}]
+            result = submit.run(self.item)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["url"], URL)
+        self.assertEqual(ledger.find(ledger.load(), URL)["submitted_at"], "2026-11-21T15:59:59Z")
+        self.assertEqual(self.item.meta["submitted_at"], "2026-11-21T15:59:59Z")
+        self.assertEqual(read_created_at.call_count, 2)
+        creates = [call for call in self.process.call_args_list if call.args[0][:3] == ["gh", "pr", "create"]]
+        self.assertEqual(len(creates), 1)
+
+    @contextlib.contextmanager
+    def crashed_pr_creation(self, crash_at="item save"):
+        """Creation succeeds remotely, but the process dies before saving the item or ledger."""
+        created_at = "2026-11-22T03:00:00Z"
+        write_json(self.ledger, [])
+        remote_prs = {}
+
+        def lookup(*args, **kwargs):
+            if args[:2] == ("search", "prs"):
+                return []
+            if args[:2] == ("pr", "list"):
+                return []  # gh pr list with --author answers from the search index, which has not listed the PR yet
+            if is_pulls_read(args):
+                repo = args[3][len("repos/"):-len("/pulls")]
+                branch = next(arg for arg in args if arg.startswith("head=")).split(":", 1)[1]
+                return rest_pulls([remote_prs[repo, branch]]) if (repo, branch) in remote_prs else []
+            if args[:2] == ("pr", "view"):
+                return {"createdAt": created_at}
+            self.fail(f"unexpected GitHub read: {args}")
+
+        def create(args):
+            self.assertEqual(args[:3], ["gh", "pr", "create"])
+            repo = args[args.index("-R") + 1]
+            branch = args[args.index("--head") + 1].split(":", 1)[1]
+            url = f"https://github.com/{repo}/pull/7"
+            remote_prs[repo, branch] = {"url": url, "state": "OPEN", "createdAt": created_at}
+            return Mock(returncode=0, stdout=url)
+
+        save = self.item.save
+        def crash_after_create():
+            if remote_prs:
+                raise RuntimeError("simulated crash before item save")
+            save()
+
+        self.process.side_effect = create
+        with patch.object(submit, "iso", return_value=created_at), \
+                patch.object(submit, "gh_json", side_effect=lookup), \
+                patch.object(submit, "preconditions", wraps=submit_preconditions), \
+                patch.object(qualify, "fresh_collisions", return_value={"verdict": "ok"}):
+            if crash_at == "item save":
+                crash = patch.object(self.item, "save", side_effect=crash_after_create)
+            else:
+                crash = patch.object(submit.ledger, "upsert", side_effect=RuntimeError("simulated crash before ledger write"))
+            with crash, self.assertRaisesRegex(RuntimeError, "simulated crash before"):
+                submit.run(self.item)
+            self.assertEqual(len(remote_prs), 1)
+            self.assertEqual(ledger.load(), [])
+            self.assertIsNone(ledger.find(ledger.load(), URL))
+            # Discard the interrupted process's mutated in-memory metadata.
+            self.item = Item(self.folder)
+            yield
+
+    def test_module_isolation_drops_an_inherited_run_start(self):
+        with patch.dict(os.environ, {shiftlock.RUN_STARTED: SHIFT_STARTED}), isolated_config():
+            self.assertNotIn(shiftlock.RUN_STARTED, os.environ)
+
+    def test_retry_after_crash_recovers_the_pr_without_creating_it_again(self):
+        for crash_at in ("item save", "ledger write"):
+            with self.subTest(crash_at=crash_at):
+                self.process.reset_mock()
+                with self.crashed_pr_creation(crash_at):
+                    result = submit.run(self.item)
+                creates = [call for call in self.process.call_args_list if call.args[0][:3] == ["gh", "pr", "create"]]
+                self.assertEqual(len(creates), 1, "the retry must find the PR in the repository list, not create it again")
+                self.assertTrue(result["ok"], result)
+                row = ledger.find(ledger.load(), URL)
+                self.assertEqual(row["submitted_at"], "2026-11-22T03:00:00Z")
+
+    def test_branch_prs_reads_our_fork_branch_from_the_repository_list(self):
+        me = CONFIG["github_user"]
+        replies = rest_pulls([{"url": URL, "state": "MERGED", "createdAt": "2026-11-22T03:00:00Z", "mergedAt": "2026-11-23T00:00:00Z"},
+                              {"url": URL.replace("/7", "/6"), "state": "CLOSED", "createdAt": "2026-11-20T03:00:00Z"}])
+        calls = []
+        def lookup(*args, **kwargs):
+            calls.append(args)
+            return replies
+        with patch.object(submit, "gh_json", side_effect=lookup):
+            prs = submit.branch_prs("example/repo", me, "contrib/parser")
+        self.assertEqual(prs, [
+            {"url": URL, "state": "MERGED", "createdAt": "2026-11-22T03:00:00Z", "mergedAt": "2026-11-23T00:00:00Z"},
+            {"url": URL.replace("/7", "/6"), "state": "CLOSED", "createdAt": "2026-11-20T03:00:00Z", "mergedAt": None}])
+        call, = calls
+        self.assertEqual(call[:4], ("api", "-X", "GET", "repos/example/repo/pulls"))
+        self.assertIn(f"head={me}:contrib/parser", call, "the head filter keeps other authors' same-named branches out")
+        self.assertIn("state=all", call)
+        self.assertNotIn("--author", call, "gh answers --author from the lagging search index")
+
+    def test_list_entry_without_a_creation_time_key_still_recovers_through_pr_view(self):
+        self.prs[:] = [{"url": URL, "state": "OPEN"}]
+        self.created_at = "2026-11-21T15:59:59Z"
+        reply = [{key: value for key, value in entry.items() if key != "created_at"} for entry in rest_pulls(self.prs)]
+        with patch.object(submit, "gh_json", side_effect=lambda *a, **k: reply if is_pulls_read(a) else {"createdAt": self.created_at}):
+            self.assertEqual(submit.branch_prs("example/repo", CONFIG["github_user"], "contrib/parser")[0]["createdAt"], None)
+            submit.recover_existing(self.item, submit.branch_prs("example/repo", CONFIG["github_user"], "contrib/parser")[0])
+        self.assertEqual(ledger.find(ledger.load(), URL)["submitted_at"], "2026-11-21T15:59:59Z")
+
+    def test_recovery_without_github_creation_time_preserves_url_without_guessing_or_recreating(self):
+        self.prs[:] = [{"url": URL, "state": "OPEN", "createdAt": None}]
+        self.created_at = None
+        self.item.file("submit-qualify.json").write_text('{"verdict": "ok"}')
+        with patch.object(submit.time, "sleep"):
+            submit.run(self.item)
+        self.assertEqual(Item(self.folder).meta.get("pr_url"), URL)
+        self.assertIsNone(ledger.find(ledger.load(), URL), "no local time stands in for GitHub's creation time")
+        self.assertFalse(any(call.args[0][:3] == ["gh", "pr", "create"] for call in self.process.call_args_list))
+
     def test_new_pr_uses_frozen_text_and_checks_remote_head(self):
         self.prs.clear()
         def create(args):
@@ -549,7 +750,7 @@ class SubmitPreview(ReleaseCase):
                     for name in ("policy.json", "qualify.json"):
                         self.item.file(name).unlink(missing_ok=True)
                     before, ledger_before = self.snapshot(), self.ledger.read_bytes()
-                    with patch.object(policy, "run", return_value={"version": policy.VERSION, "flags": {}}), \
+                    with patch.object(policy, "run", return_value={"version": policy.VERSION, "at": iso(), "flags": {}}), \
                             patch.object(qualify, "run", return_value={"at": iso(), "verdict": "ok"}):
                         result = submit.run(self.item, dry_run=True)
                     self.assertTrue(result["ok"], result)
@@ -602,7 +803,7 @@ class ShipCoordinator(ReleaseCase):
                     for name in ("policy.json", "qualify.json"):
                         self.item.file(name).unlink(missing_ok=True)
                     before, files_before = self.state(), self.snapshot()
-                    with patch.object(policy, "run", return_value={"version": policy.VERSION, "flags": {}}), \
+                    with patch.object(policy, "run", return_value={"version": policy.VERSION, "at": iso(), "flags": {}}), \
                             patch.object(qualify, "run", return_value={"at": iso(), "verdict": "ok"}):
                         result = ship.run(str(self.folder), dry_run=True)
                     self.assertTrue(result["ok"], result)
@@ -689,7 +890,7 @@ class ReleaseEvidence(ReleaseCase):
         self.extra.side_effect = RUN_EXTRA
         self.item.meta.update(issue=None, issue_first="issue")
         self.item.file("approval.json").unlink()
-        write_json(self.item.file("policy.json"), {"version": policy.VERSION, "flags": {
+        write_json(self.item.file("policy.json"), {"version": policy.VERSION, "at": iso(), "flags": {
             "linked_issue_enforced": ["Fixes keyword and assigned issue required"], "repro_required": ["Reproduce before fixing"]}})
         rep, result = gate.pre_issue(self.item)
         self.assertTrue(rep.ok, rep.text())

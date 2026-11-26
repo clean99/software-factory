@@ -230,10 +230,19 @@ def activity_alt(data):
             f"{totals['closed_unmerged']} closed without merge. Each event is dated by when it happened.")
 
 
-def portfolio(rows, user, *, generated_at=None):
+def published_snapshot(path):
+    """The metrics.json a site publish wrote, so the card repeats that snapshot instead of recomputing it."""
+    data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    if (not isinstance(data, dict) or not isinstance(data.get("generated_at"), str)
+            or not all(isinstance(data.get(key), dict) for key in ("metrics", "cohort", "population"))):
+        raise ValueError(f"{path} is not a published metrics.json")
+    return data
+
+
+def portfolio(rows, user, *, generated_at=None, data=None):
     upstream = [row for row in rows if canonical(row["repo"]).split("/")[0].lower() != user.lower()]
     merged = merged_by_repo(upstream)
-    data = portfolio_data(upstream, user, generated_at=generated_at)
+    data = portfolio_data(upstream, user, generated_at=generated_at) if data is None else data
     repo, dashboard = public_destinations(CONFIG)
     settings = load_highlights()
     dates = sorted(date for row in upstream if (date := profile_date(row.get("submitted_at"))))
@@ -266,11 +275,11 @@ def portfolio(rows, user, *, generated_at=None):
     return '\n\n'.join(parts) + '\n'
 
 
-def render_readme(text, rows=None, groups=None, user=None, *, generated_at=None):
+def render_readme(text, rows=None, groups=None, user=None, *, generated_at=None, data=None):
     user = user or CONFIG["github_user"]
     rows = ledger_rows(user) if rows is None else rows
     text = replace_block(with_markers(text), render(rows, groups, user))
-    intro = portfolio(rows, user, generated_at=generated_at)
+    intro = portfolio(rows, user, generated_at=generated_at, data=data)
     if block(text, PORTFOLIO_START, PORTFOLIO_END) is not None:
         return replace_block(text, intro, PORTFOLIO_START, PORTFOLIO_END)
     return PORTFOLIO_START + "\n" + intro + PORTFOLIO_END + "\n\n" + text
@@ -398,7 +407,7 @@ def privacy_findings(text):
     return list(dict.fromkeys(found))
 
 
-def check(text, user, *, generated_at=None):
+def check(text, user, *, generated_at=None, data=None):
     missing = [key for key in ("private_terms", "git_email_previous") if key not in CONFIG]
     if missing:
         raise ValueError(f"{', '.join(missing)} not configured (.factory.local.json); the privacy check cannot run")
@@ -417,7 +426,7 @@ def check(text, user, *, generated_at=None):
     }
     intro = block(text, PORTFOLIO_START, PORTFOLIO_END)
     if intro is not None:
-        result["portfolio_mismatch"] = [] if intro == "\n" + portfolio(rows, user, generated_at=generated_at) else [
+        result["portfolio_mismatch"] = [] if intro == "\n" + portfolio(rows, user, generated_at=generated_at, data=data) else [
             "run factory sync profile --readme PATH --write"]
     current = block(text)
     if current is not None:

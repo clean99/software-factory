@@ -1,7 +1,7 @@
 """Is this issue still worth a PR from us right now?
 
-Encodes the collision lessons: an assignee is a claim, any open PR is a collision, two outside
-attempts mean the issue is an AI-swarm target, and a recent "I'll take this" comment counts.
+Encodes the collision lessons: an assignee is a claim, any open PR is a collision, a closed outside
+attempt is a reason to read why it was closed, and a recent "I'll take this" comment counts.
 Run before coding and again right before submit; results older than the configured window are
 treated as unknown by the gate.
 """
@@ -361,10 +361,10 @@ def run(repo, num, keywords=(), target="issue"):
     pr_skip, pr_warn, outsiders = classify_prs([p for p in prs.values() if p.get("via") != "keyword"], me)
     skip += pr_skip
     warn += pr_warn
-    if len(outsiders) >= 2:
-        skip.append(f"{len(outsiders)} closed attempts by {', '.join(sorted(outsiders))}: AI-swarm target, maintainers are tired of it")
-    elif outsiders:
-        warn.append(f"one closed attempt by {next(iter(outsiders))}: read why it was closed before starting")
+    # A count of closed attempts proves nothing about the issue (owner, 2026-11-22); what each closing said decides.
+    if outsiders:
+        warn.append(f"closed attempts by {', '.join(sorted(outsiders))}: read why each was closed before starting, and drop "
+                    "the issue only on an actual reason (already fixed, duplicate, claimed, or the direction was rejected)")
 
     verdict = "skip" if skip else "ok"
     return {

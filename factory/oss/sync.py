@@ -199,7 +199,7 @@ def local_output(path, content, write=False):
                                          fromfile=str(path), tofile=str(path) + " (generated)")), end="")
 
 
-def profile(readme=None, write=False):
+def profile(readme=None, write=False, metrics=None):
     repo = f"{CONFIG['github_user']}/{CONFIG['github_user']}"
     checkout = clone_dir(repo)
     default = checkout / "README.md"
@@ -207,8 +207,9 @@ def profile(readme=None, write=False):
     if not checkout.exists() and path.resolve() == default.resolve():
         clones.ensure_repo(repo)
     text = profile_readme.read(path)
-    rendered = profile_readme.render_readme(text)
-    result = profile_readme.check(rendered, CONFIG["github_user"])
+    data = profile_readme.published_snapshot(metrics) if metrics else None
+    rendered = profile_readme.render_readme(text, data=data)
+    result = profile_readme.check(rendered, CONFIG["github_user"], data=data)
     if not result["ok"]:
         raise ValueError("profile check failed; repair the README before writing: " + json.dumps(result))
     local_output(path, rendered, write)
@@ -391,7 +392,7 @@ def command(args):
         if args.sync_command == "status":
             print(json.dumps(status(), indent=2))
         elif args.sync_command == "profile":
-            profile(args.readme, args.write)
+            profile(args.readme, args.write, args.metrics)
         elif args.sync_command == "interview":
             interview(args.write)
         elif args.sync_command == "notebook":
@@ -420,6 +421,7 @@ def register(sub):
     p = commands.add_parser("profile", help="diff the local profile's merged block; never pushes")
     p.add_argument("--readme")
     p.add_argument("--write", action="store_true")
+    p.add_argument("--metrics", help="published site metrics.json; the card repeats that snapshot")
     p.set_defaults(fn=command)
     p = commands.add_parser("interview", help="diff generated contribution tables and the index")
     p.add_argument("--write", action="store_true")

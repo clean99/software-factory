@@ -292,41 +292,36 @@ class Watch(unittest.TestCase):
         self.assertEqual(len(row["candidates"][0]["files"]), 40)
         self.assertEqual(self.gh.call_count, 3)
 
-    def test_fresh_bug_requires_a_maintainer_invitation(self):
-        self.issues = [node(i, issue=True, labels=["bug"]) for i in range(1, 7)]
-        self.comments = [comment(2), comment(3, association="CONTRIBUTOR"), comment(4, author="fixture-owner"),
-                         comment(5, body="Thanks for the report"), comment(6, created=iso(AT + dt.timedelta(minutes=1)))]
-        report = watch.run(repos=["o/r"])
-        self.assertEqual([item["number"] for item in report["candidates"]], [2])
-        self.assertEqual({item["number"] for item in report["rejected"]}, {1, 3, 4, 5, 6})
-        self.assertTrue(all(item["reason"] == "younger than 48h, no maintainer invitation" for item in report["rejected"]))
-
-    def test_bug_issue_type_uses_the_same_freshness_rule(self):
-        self.issues = [node(1, issue=True, issueType={"name": "Bug"})]
-        report = watch.run(repos=["o/r"])
-        self.assertEqual(report["candidates"], [])
-        self.assertEqual(report["rejected"][0]["number"], 1)
-
-    def test_exactly_48_hours_is_eligible_and_ages_in_without_an_update(self):
-        self.issues = [node(1, issue=True, labels=["bug"], createdAt=iso(AT - dt.timedelta(hours=48)), updatedAt=OLD),
-                       node(2, issue=True, labels=["bug"], createdAt=iso(AT - dt.timedelta(hours=48) + dt.timedelta(seconds=1)))]
+    def test_one_hour_old_bug_is_a_candidate_without_an_invitation(self):
+        opened = iso(AT - dt.timedelta(hours=1))
+        self.issues = [node(1, issue=True, labels=["bug"], createdAt=opened, updatedAt=opened)]
         report = watch.run(repos=["o/r"])
         self.assertEqual([item["number"] for item in report["candidates"]], [1])
-        self.assertEqual([item["number"] for item in report["rejected"]], [2])
-        with patch.object(watch, "now", return_value=AT + dt.timedelta(days=1)):
-            report = watch.run(repos=["o/r"])
-        self.assertEqual([item["number"] for item in report["candidates"]], [2])
-        query = " ".join(self.gh.call_args_list[-1].args)
-        self.assertIn("updated:>=2026-10-26T12:00:00Z", query)
+        self.assertEqual(report["candidates"][0]["kind"], "issue")
+        self.assertNotIn("rejected", report)
+        self.assertNotIn("rejected", report["repos"][0])
 
-    def test_earlier_invitation_exempts_a_reopened_fresh_bug(self):
+    def test_fresh_bug_issue_type_is_a_candidate_without_an_invitation(self):
+        self.issues = [node(1, issue=True, issueType={"name": "Bug"})]
+        report = watch.run(repos=["o/r"])
+        self.assertEqual([item["number"] for item in report["candidates"]], [1])
+
+    def test_issue_search_starts_at_since_without_a_freshness_lookback(self):
+        since = iso(AT - dt.timedelta(hours=1))
+        watch.run(repos=["o/r"], since=since)
+        query, = [arg for arg in self.gh.call_args_list[0].args if arg.startswith("issues=")]
+        self.assertIn("is:issue is:open", query)
+        self.assertIn("updated:>=2026-10-28T11:00:00Z", query)
+        self.assertNotIn("2026-10-26", query)
+
+    def test_reopened_fresh_bug_remains_a_candidate(self):
         created = iso(AT - dt.timedelta(hours=4))
         self.issues = [node(1, issue=True, labels=["bug"], createdAt=created,
                             timelineItems={"nodes": [{"createdAt": RECENT}]})]
         self.comments = [comment(1, created=iso(AT - dt.timedelta(hours=3)))]
         report = watch.run(repos=["o/r"], since=iso(AT - dt.timedelta(hours=1)))
         self.assertEqual([item["number"] for item in report["candidates"]], [1])
-        self.assertEqual(report["rejected"], [])
+        self.assertNotIn("rejected", report)
 
     def test_own_followups_include_known_merged_pr_comments_reviews_and_inline_comments(self):
         write_json(self.root / "ledger/prs.json", [{"repo": "o/r", "number": 1, "url": "https://github.com/o/r/pull/1"}])
@@ -393,19 +388,18 @@ class Watch(unittest.TestCase):
         report = watch.run(repos=["o/r"])
         self.assertEqual([item["number"] for item in report["candidates"]], [4])
 
-    def test_fresh_tracking_bug_is_rejected_without_invitation(self):
+    def test_fresh_tracking_bug_keeps_its_unchecked_items_without_invitation(self):
         self.issues = [node(1, issue=True, title="Tracking bugs", authorAssociation="OWNER", labels=["bug"], body="- [ ] Adapter")]
         report = watch.run(repos=["o/r"])
-        self.assertEqual(report["candidates"], [])
-        self.assertEqual(report["rejected"][0]["kind"], "tracking-item")
+        self.assertEqual([item["kind"] for item in report["candidates"]], ["tracking-item"])
+        self.assertEqual(report["candidates"][0]["quote"], "- [ ] Adapter")
 
-    def test_aging_tracking_bug_keeps_its_unchecked_items(self):
+    def test_unchanged_tracking_bug_outside_window_is_not_replayed(self):
         self.issues = [node(1, issue=True, title="Roadmap", authorAssociation="MEMBER", labels=["bug"],
                             body="- [ ] Adapter", createdAt=iso(AT - dt.timedelta(hours=48)),
                             updatedAt=iso(AT - dt.timedelta(hours=48)))]
         report = watch.run(repos=["o/r"], since=iso(AT - dt.timedelta(hours=1)))
-        self.assertEqual([item["kind"] for item in report["candidates"]], ["tracking-item"])
-        self.assertEqual(report["candidates"][0]["quote"], "- [ ] Adapter")
+        self.assertEqual(report["candidates"], [])
 
     def test_new_kinds_rank_first_and_all_candidates_have_evidence(self):
         self.own = [node(6, author="fixture-owner", comments={"nodes": [comment(6, body="Feel free to add a follow-up")],

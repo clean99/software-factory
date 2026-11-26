@@ -184,7 +184,7 @@ class Plan(Workspace):
         self.assertEqual(self.names(report, "unreviewed"), ["unreviewed"])
         self.assertEqual(report["missing_clone"] + report["errors"], [])
 
-    def test_repo_slots_report_caps_medians_and_order(self):
+    def test_repo_slots_report_medians_and_order_without_count_caps(self):
         write_json(self.ledger, [
             row("a/fast", 1, "merged", ago(9), took(9, 2)),
             row("a/fast", 2, "merged", ago(8), took(8, 4)),
@@ -200,37 +200,107 @@ class Plan(Workspace):
         slots = plan.run()["repo_slots"]
         self.assertEqual([s["repo"] for s in slots], ["b/many", "a/fast", "e/slow", "c/full"])
         fast = slots[1]
-        self.assertEqual({k: fast[k] for k in ("open", "cap", "free", "merged", "median_merge_hours", "oldest_open_days", "stopped")},
-                         {"open": 1, "cap": 3, "free": 2, "merged": 2, "median_merge_hours": 3.0, "oldest_open_days": 1.0, "stopped": False})
+        self.assertEqual({k: fast[k] for k in ("open", "merged", "median_merge_hours", "oldest_open_days", "stopped", "stop_reasons")},
+                         {"open": 1, "merged": 2, "median_merge_hours": 3.0, "oldest_open_days": 1.0, "stopped": False, "stop_reasons": []})
         self.assertEqual((slots[0]["median_merge_hours"], slots[0]["oldest_open_days"]), (20.0, None))
-        self.assertEqual((slots[3]["open"], slots[3]["free"]), (3, 0))
+        self.assertEqual(slots[3]["open"], 3)
+        self.assertTrue(all(not slot["stopped"] for slot in slots))
+        for slot in slots:
+            self.assertNotIn("cap", slot)
+            self.assertNotIn("free", slot)
 
-    def test_silent_or_stale_repos_are_stopped_and_sorted_after_usable_ones(self):
+    def test_unresponsive_repos_sort_after_responsive_ones_even_with_more_merges(self):
         write_json(self.ledger, [
-            row("s/silent", 1, "merged", ago(20), ago(19)),
-            row("s/silent", 2, "silent", ago(8)),
-            row("t/stale", 1, "merged", ago(20), ago(10)),
-            row("t/stale", 2, "submitted", ago(5)),
+            row("s/silent", 1, "merged", ago(60), ago(59)),
+            row("s/silent", 2, "merged", ago(58), ago(57)),
+            *[row("s/silent", n, "silent", ago(40)) for n in (3, 4, 5)],
+            row("t/waiting", 1, "merged", ago(20), ago(10)),
+            row("t/waiting", 2, "silent", ago(8)),
             row("u/merged-since", 1, "submitted", ago(5)),
             row("u/merged-since", 2, "merged", ago(3), ago(1)),
-            row("v/fresh", 1, "merged", ago(20), ago(10)),
-            row("v/fresh", 2, "submitted", ago(2)),
         ])
         ordered = plan.run()["repo_slots"]
         slots = {s["repo"]: s for s in ordered}
         self.assertTrue(slots["s/silent"]["stopped"])
-        self.assertIn("#2 is silent", slots["s/silent"]["stop_reasons"])
-        self.assertTrue(slots["t/stale"]["stopped"])
-        self.assertEqual(slots["t/stale"]["oldest_open_days"], 5.0)
+        self.assertEqual(len(slots["s/silent"]["stop_reasons"]), 1)
+        self.assertFalse(slots["t/waiting"]["stopped"])
         self.assertFalse(slots["u/merged-since"]["stopped"])
-        self.assertFalse(slots["v/fresh"]["stopped"])
-        self.assertEqual([s["repo"] for s in ordered], ["u/merged-since", "v/fresh", "s/silent", "t/stale"])
+        self.assertEqual([s["repo"] for s in ordered], ["u/merged-since", "t/waiting", "s/silent"])
 
     def test_unreadable_ledger_refuses_to_plan(self):
         self.ledger.write_text("{not json")
         with self.assertRaises(SystemExit) as raised:
             plan.run()
         self.assertIn("unreadable", str(raised.exception))
+
+
+class Unresponsive(Workspace):
+    def waiting(self, ages=(40, 35, 30)):
+        return [row("o/r", n, "community-review" if n == 2 else "silent", ago(days))
+                for n, days in enumerate(ages, 1)]
+
+    def test_two_old_silent_prs_are_not_enough_history(self):
+        rows = [row("o/r", n, "silent", ago(40)) for n in (1, 2)]
+        self.assertEqual(plan.unresponsive(rows, at=AT), [])
+
+    def test_three_long_unanswered_prs_name_the_waiting_sample(self):
+        reason, = plan.unresponsive(self.waiting(), at=AT)
+        for phrase in ("3 of our PRs", "#1 (40 days)", "#2 (35 days)", "#3 (30 days)", "30+ days", ago(40)[:10]):
+            self.assertIn(phrase, reason)
+
+    def test_a_recent_third_pr_does_not_complete_the_sample(self):
+        self.assertEqual(plan.unresponsive(self.waiting((40, 35, 10)), at=AT), [])
+
+    def test_a_maintainer_review_clears_the_pause(self):
+        for status in ("in-review", "changes-requested"):
+            with self.subTest(status=status):
+                self.assertEqual(plan.unresponsive(self.waiting() + [row("o/r", 4, status, ago(20))], at=AT), [])
+
+    def test_answer_times_not_pr_creation_times_decide(self):
+        for status in ("in-review", "changes-requested"):
+            with self.subTest(status=status):
+                old_pr = row("o/r", 4, status, ago(60))
+                self.assertTrue(plan.unresponsive(self.waiting() + [{**old_pr, "maintainer_answered_at": ago(45)}], at=AT),
+                                "an answer before the oldest waiting PR does not excuse later silence")
+                self.assertEqual(plan.unresponsive(self.waiting() + [{**old_pr, "maintainer_answered_at": ago(1)}], at=AT), [],
+                                 "yesterday's answer on an old PR shows maintainers respond")
+                self.assertEqual(plan.unresponsive(self.waiting() + [old_pr], at=AT), [],
+                                 "an answer of unknown time cannot be ruled out, so it counts")
+
+    def test_recorded_maintainer_responses_decide_not_the_status(self):
+        answered_ci = {**row("o/r", 4, "ci-failing", ago(20)), "responded": {"maintainer": True}}
+        self.assertEqual(plan.unresponsive(self.waiting() + [answered_ci], at=AT), [],
+                         "a maintainer answer on a newer PR whose CI fails still counts")
+        quiet_ci = {**row("o/r", 4, "ci-failing", ago(20)), "responded": {"maintainer": False}}
+        self.assertTrue(plan.unresponsive(self.waiting() + [quiet_ci], at=AT))
+        answered_silent = self.waiting()
+        answered_silent[0] = {**answered_silent[0], "responded": {"maintainer": True}}
+        self.assertEqual(plan.unresponsive(answered_silent, at=AT), [], "an answered PR is not part of the waiting sample")
+
+    def test_merge_since_the_oldest_waiting_pr_clears_the_pause(self):
+        for days in (39, 40):
+            with self.subTest(days=days):
+                merged = row("o/r", 4, "merged", ago(50), ago(days))
+                self.assertEqual(plan.unresponsive(self.waiting() + [merged], at=AT), [])
+
+    def test_merge_before_the_oldest_waiting_pr_does_not_clear_the_pause(self):
+        merged = row("o/r", 4, "merged", ago(50), ago(41))
+        self.assertEqual(plan.unresponsive(self.waiting() + [merged], at=AT), plan.unresponsive(self.waiting(), at=AT))
+
+    def test_close_since_the_oldest_waiting_pr_clears_the_pause(self):
+        for days in (39, 40):
+            with self.subTest(days=days):
+                closed = {**row("o/r", 4, "closed", ago(50)), "closed_at": ago(days)}
+                self.assertEqual(plan.unresponsive(self.waiting() + [closed], at=AT), [])
+
+    def test_slot_exposes_response_reasons_without_cap_or_free(self):
+        for rows in (self.waiting(), self.waiting((40, 35, 10))):
+            with self.subTest(ages=[r["submitted_at"] for r in rows]):
+                slot = plan.slot(rows)
+                reasons = plan.unresponsive(rows, at=AT)
+                self.assertEqual((slot["stopped"], slot["stop_reasons"]), (bool(reasons), reasons))
+                self.assertNotIn("cap", slot)
+                self.assertNotIn("free", slot)
 
 
 class SchemaTwoStages(Workspace):

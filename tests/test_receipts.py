@@ -298,6 +298,19 @@ class ReceiptCommands(ReceiptSandbox):
         self.assertEqual(repeated["match"], {"exit": True, "output": True})
         self.assertTrue(receipts.valid(repeated))
 
+    def test_rerun_restores_a_home_scrubbed_from_the_middle_of_a_resolved_cwd(self):
+        # A symlinked home appears inside the resolved clone path, not as its prefix
+        home = "/" + self.root.name
+        with patch.dict(os.environ, {"HOME": home}):
+            receipt = self.command()
+            self.assertEqual(receipt["cwd"], str(self.clone).replace(home, "~"))
+            self.assertNotEqual(receipt["cwd"][:1], "~")
+            self.assertEqual(receipts.command_cwd(self.item, receipt["cwd"]), self.clone)
+            with redirect_stdout(io.StringIO()):
+                repeated = receipts.rerun(self.item, receipt["id"])
+        self.assertEqual(repeated["cwd"], receipt["cwd"])
+        self.assertEqual(repeated["match"], {"exit": True, "output": True})
+
     def test_tail_keeps_only_last_forty_lines_and_four_hundred_characters(self):
         script = "for i in range(45): print(str(i) + ':' + 'é' * 450)"
         receipt = self.command(["python3", "-c", script])
@@ -566,7 +579,7 @@ class ReceiptCli(ReceiptSandbox):
         self.assertIn("registered\thook-env\tL-035", output)
 
     def test_legacy_index_has_exact_contract_ids_and_real_enforcers(self):
-        expected = "gate-artifacts self-review user-impact independent-review review-head redgreen hygiene merges-cleanly issue-free outsiders-accepted ai-policy ai-disclosure issue-precondition issue-first owner-prose dco coordinator-review approval hooks-drift qualify policy-scan flood-caps stale-open missing-lesson privacy-scan gitleaks commit-wrapper followup stop-check thread-reply clone-heal ship-preconditions health watch"
+        expected = "gate-artifacts self-review user-impact independent-review review-head redgreen hygiene merges-cleanly issue-free outsiders-accepted ai-policy ai-disclosure issue-precondition issue-first owner-prose dco coordinator-review approval hooks-drift qualify policy-scan unresponsive-repo missing-lesson privacy-scan gitleaks commit-wrapper followup stop-check thread-reply clone-heal ship-preconditions health watch"
         self.assertEqual(set(checks.LEGACY), set(expected.split()))
         for id, description in checks.LEGACY.items():
             for name in re.findall(r"factory\.[\w.]+", description.partition(":")[0]):

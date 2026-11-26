@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from support import setup_module
-from factory.core import shiftlock
+from factory.core import ledger, shiftlock
 
 SPEC = importlib.util.spec_from_file_location("agent_shift", ROOT / "schedule" / "agent-shift.py")
 agent_shift = importlib.util.module_from_spec(SPEC)
@@ -104,6 +104,31 @@ class ShiftLease(unittest.TestCase):
                          "user's instruction", "overrides the default", "Never create a temporary branch", "owner action"):
                 self.assertIn(text, prompt)
 
+    def test_contribution_sessions_carry_one_run_start_across_resumes(self):
+        def finish(session, transcript, deadline):
+            transcript.write_text(json.dumps({"type": "assistant", "session_id": "session-1"}) + "\n")
+            return 1 if self.watch.call_count == 1 else 0
+
+        self.watch.side_effect = finish
+        before = int(agent_shift.time.time())
+        agent_shift.run_shift(self.name, 240)
+        after = agent_shift.time.time()
+        sessions = [call for call in self.popen.call_args_list if "cwd" in call.kwargs]
+        self.assertEqual(len(sessions), 2)
+        starts = {call.kwargs["env"][shiftlock.RUN_STARTED] for call in sessions}
+        self.assertEqual(len(starts), 1, "a resumed session keeps the run's start, so its shift count continues")
+        start = dt.datetime.fromisoformat(starts.pop())
+        self.assertLessEqual(before, start.timestamp())
+        self.assertLessEqual(start.timestamp(), after)
+        self.assertIn(f"counted from its start at {start.isoformat()}", sessions[0].args[0][2])
+        self.popen.reset_mock()
+        self.watch.side_effect, self.watch.return_value = None, 0
+        weekly_run = "weekly-2026-W47"
+        agent_shift.run_shift("auto-" + weekly_run, 180, kind="weekly", key=weekly_run)
+        weekly, = [call for call in self.popen.call_args_list if "cwd" in call.kwargs]
+        self.assertNotIn(shiftlock.RUN_STARTED, weekly.kwargs["env"])
+        self.assertNotIn("New-PR plan", weekly.args[0][2])
+
     def test_weekly_retry_keeps_review_boundary_and_does_not_publish(self):
         def finish(session, transcript, deadline):
             transcript.write_text(json.dumps({"type": "assistant", "session_id": "weekly-1"}) + "\n")
@@ -169,6 +194,38 @@ class ShiftLease(unittest.TestCase):
         prepare.assert_not_called()
         self.popen.assert_not_called()
         self.assertEqual(shiftlock.run("status")["holder"], held)
+
+    def test_an_expired_login_fails_fast_without_retries_even_when_reported_as_success(self):
+        for outcome in (0, 1):
+            with self.subTest(outcome=outcome):
+                def expired(session, transcript, deadline, outcome=outcome):
+                    self.acquire(self.name)
+                    with transcript.open("a") as stream:
+                        stream.write(json.dumps({"type": "assistant", "session_id": "s-1", "message": {"content": [
+                            {"type": "text", "text": "Failed to authenticate: OAuth session expired and could not be refreshed"}]}}) + "\n")
+                        stream.write(json.dumps({"type": "result", "subtype": "success", "is_error": True, "num_turns": 1,
+                                                 "result": "Failed to authenticate: OAuth session expired and could not be refreshed"}) + "\n")
+                    return outcome
+
+                self.watch.side_effect = expired
+                summary = agent_shift.run_shift(self.name, 240)
+                self.assertEqual(self.watch.call_count, 1, "no retry can log in")
+                self.assertTrue(summary["status"].startswith("blocked: Failed to authenticate: OAuth session expired"))
+                self.assertIn("needs the owner to log in", summary["status"])
+                self.assertEqual(summary["attempts"], [summary["status"]])
+                self.assertTrue(shiftlock.run("status")["free"])
+                self.watch.reset_mock()
+
+    def test_an_ordinary_error_result_still_retries(self):
+        def flaky(session, transcript, deadline):
+            with transcript.open("a") as stream:
+                stream.write(json.dumps({"type": "assistant", "session_id": "s-1"}) + "\n")
+                stream.write(json.dumps({"type": "result", "is_error": True, "result": "API Error: 529 overloaded"}) + "\n")
+            return 1 if self.watch.call_count == 1 else 0
+
+        self.watch.side_effect = flaky
+        summary = agent_shift.run_shift(self.name, 240)
+        self.assertEqual(summary["attempts"], [1, 0])
 
     def test_own_lease_is_released_after_failed_run(self):
         for outcome in (1, "no answer after start", "stopped at the time limit"):
@@ -449,6 +506,8 @@ class ShiftLease(unittest.TestCase):
                 else:
                     self.assertEqual(summary["public_refresh"], refreshed)
                 self.assertEqual(sum("publish" in call.args[0] for call in commands.call_args_list), 1)
+                notices = [call.args[0][-1] for call in commands.call_args_list if call.args[0][1:2] == ["notify"]]
+                self.assertEqual(any("public refresh failed: Synthetic refresh failure" in text for text in notices), fails)
                 self.watch.assert_called_once()
                 self.sleep.assert_not_called()
 
@@ -490,7 +549,7 @@ class PublicRefresh(unittest.TestCase):
         self.run.assert_called_once()
         self.assertEqual(self.run.call_args.args[0], [str(self.root / "bin/factory"), "public", "publish",
                                                     "--clone", str(self.root / "public-clone")])
-        self.assertEqual(self.run.call_args.kwargs["timeout"], 600)
+        self.assertEqual(self.run.call_args.kwargs["timeout"], 1800)
         self.assertEqual(self.run.call_args.kwargs["cwd"], self.root)
         self.assertEqual(self.run.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
 
@@ -513,11 +572,21 @@ class PublicRefresh(unittest.TestCase):
             self.run.return_value = response
             self.assertFalse(agent_shift.refresh_public(self.out)["ok"])
         for error in (OSError("Not executable"), RuntimeError("Unexpected failure"),
-                      agent_shift.subprocess.TimeoutExpired("publish", 600)):
+                      agent_shift.subprocess.TimeoutExpired("publish", 1800)):
             self.run.side_effect = error
             result = agent_shift.refresh_public(self.out)
             self.assertFalse(result["ok"])
             self.assertTrue(result["error"])
+        self.assertEqual(result["error"], "public publish timed out after 1800s")
+        progress = "public: export build and tree scan finished after 300.0s\npublic: fetch and fetched-history validation started\n"
+        self.run.side_effect = agent_shift.subprocess.TimeoutExpired("publish", 1800, stderr=progress)
+        self.assertEqual(agent_shift.refresh_public(self.out)["progress"], progress.splitlines())
+        self.run.side_effect = None
+        self.run.return_value = Mock(returncode=1, stdout="", stderr="public: scan started\n" + "x" * 3000 + "\nfinal reason")
+        self.assertTrue(agent_shift.refresh_public(self.out)["error"].endswith("final reason"))
+        self.run.return_value = Mock(returncode=1, stderr="public: scan started\n", stdout='{"ok": false, "findings": ["unlisted"]}')
+        self.assertTrue(agent_shift.refresh_public(self.out)["error"].endswith('"findings": ["unlisted"]}'))
+        self.run.return_value = Mock(returncode=0, stdout=json.dumps(self.result))
         with patch.object(agent_shift, "load_config", side_effect=ValueError("Invalid config")):
             self.assertEqual(agent_shift.refresh_public(self.out), {"ok": False, "error": "Invalid config"})
 
@@ -686,6 +755,9 @@ class Runtime(unittest.TestCase):
         self.assertIn("no lane-stop command exists", text)
         self.assertIn("withhold all new contributions", text)
         self.assertLess(text.index("read all open issues"), text.index("qualified new contribution"))
+        self.assertIn("look for new repositories", text)
+        self.assertIn("split work to raise the count", text)
+        self.assertNotIn("at most one qualified new contribution", text)
 
     def test_isolated_logs_exclude_the_configured_production_tree(self):
         with patch.dict(os.environ, {"FACTORY_SHIFT_LOGS": str(self.root / "production/logs/check")}), \
@@ -748,7 +820,7 @@ class Schedule(unittest.TestCase):
         for zone in ("America/Los_Angeles", "UTC", "Asia/Tokyo"):
             with patch.dict(os.environ, {"TZ": zone}):
                 result = agent_shift.plan(self.config, self.now)
-                self.assertEqual(result["daily"]["next_slot"], "2026-11-23T21:43:00+08:00")
+                self.assertEqual(result["daily"]["next_slot"], "2026-11-23T05:43:00+08:00")
                 self.assertEqual(result["weekly"]["next_slot"], "2026-11-29T22:30:00+08:00")
                 self.assertEqual(agent_shift.plan(self.config, self.now.astimezone(dt.timezone.utc)), result)
         with self.assertRaisesRegex(ValueError, "offset"):
@@ -757,13 +829,231 @@ class Schedule(unittest.TestCase):
     def test_keys_use_slot_dates_across_midnight_and_iso_year(self):
         daily, weekly = self.config["kinds"].values()
         for instant, expected in (("2026-11-23T00:10:00+08:00", "daily-2026-11-22"),
-                                  ("2026-11-22T23:59:00-08:00", "daily-2026-11-22")):
+                                  ("2026-11-22T23:59:00-08:00", "daily-2026-11-23-1343")):
             slot = agent_shift.slot_at(dt.datetime.fromisoformat(instant), daily)
             self.assertEqual(agent_shift.run_key("daily", slot), expected)
         slot = agent_shift.slot_at(dt.datetime.fromisoformat("2027-01-04T01:00:00+08:00"), weekly)
         self.assertEqual(agent_shift.run_key("weekly", slot), "weekly-2026-W53")
         next_slot = agent_shift.slot_at(slot, weekly, upcoming=True)
         self.assertEqual(agent_shift.run_key("weekly", next_slot), "weekly-2027-W01")
+
+    def test_three_daily_slots_keep_the_evening_key_and_suffix_the_others(self):
+        daily = self.config["kinds"]["daily"]
+        self.assertEqual(daily["times"], ["05:43", "13:43", "21:43"])
+        cases = (("2026-11-22T05:42:59+08:00", "daily-2026-11-21", "2026-11-22T05:43:00+08:00"),
+                 ("2026-11-22T05:43:00+08:00", "daily-2026-11-22-0543", "2026-11-22T13:43:00+08:00"),
+                 ("2026-11-22T13:43:00+08:00", "daily-2026-11-22-1343", "2026-11-22T21:43:00+08:00"),
+                 ("2026-11-22T21:43:00+08:00", "daily-2026-11-22", "2026-11-23T05:43:00+08:00"))
+        for zone in ("America/Los_Angeles", "UTC", "Asia/Tokyo"):
+            for instant, key, upcoming in cases:
+                with self.subTest(zone=zone, instant=instant), patch.dict(os.environ, {"TZ": zone}):
+                    now = dt.datetime.fromisoformat(instant).astimezone(dt.timezone.utc)
+                    self.assertEqual(agent_shift.run_key("daily", agent_shift.slot_at(now, daily)), key)
+                    self.assertEqual(agent_shift.plan(self.config, now)["daily"]["next_slot"], upcoming)
+
+    def test_saved_evening_claim_still_dedupes_and_new_slots_claim_their_own_keys(self):
+        runs = self.logs / "runs"
+        runs.mkdir()
+        saved = {"kind": "daily", "run_key": "daily-2026-11-21", "slot": "2026-11-21T21:43:00+08:00", "name": "auto-daily-2026-11-21",
+                 "dry_run": False, "status": "skipped", "reason": "disabled",
+                 "claimed_at": "2026-11-21T13:43:00+00:00", "updated_at": "2026-11-21T13:43:00+00:00"}
+        (runs / "daily-2026-11-21.json").write_text(json.dumps(saved) + "\n")
+        self.assertIsNone(agent_shift.claim(self.logs, "daily", dt.datetime.fromisoformat(saved["slot"]), self.now))
+        keys = [agent_shift.claim(self.logs, "daily", dt.datetime.fromisoformat(f"2026-11-22T{time}:00+08:00"), self.now)["run_key"]
+                for time in ("05:43", "13:43", "21:43")]
+        self.assertEqual(keys, ["daily-2026-11-22-0543", "daily-2026-11-22-1343", "daily-2026-11-22"])
+        self.assertEqual(len(agent_shift.read_records(self.logs)), 4)
+
+    def test_restart_after_a_gap_claims_each_slot_once_and_runs_only_the_newest(self):
+        self.now = dt.datetime.fromisoformat("2026-11-23T14:00:00+08:00")
+        # A cursor saved by the single-slot scheduler resumes without replaying the evening it already covered.
+        cursors = {"daily": "2026-11-22T21:50:00+08:00", "weekly": "2026-11-22T22:40:00+08:00"}
+        ready = agent_shift.scheduled_records(self.logs, self.config, self.now, dict(cursors))
+        self.assertEqual([r["run_key"] for r in ready], ["daily-2026-11-23-1343"])
+        skipped = {r["run_key"]: r["reason"] for r in agent_shift.read_records(self.logs) if r["status"] == "skipped"}
+        self.assertEqual(skipped, {"daily-2026-11-23-0543": "missed"})
+        # Restarting with the saved cursor, or with none, never claims or launches a slot again.
+        self.assertEqual(agent_shift.scheduled_records(self.logs, self.config, self.now, dict(cursors)), [])
+        self.assertEqual(agent_shift.scheduled_records(self.logs, self.config, self.now, {}), [])
+        launched = [r for r in agent_shift.read_records(self.logs) if r["status"] == "claimed"]
+        self.assertEqual([r["run_key"] for r in launched], ["daily-2026-11-23-1343"])
+
+    def test_daily_and_weekly_never_run_together(self):
+        daily = self.config["kinds"]["daily"]
+        sunday = agent_shift.claim(self.logs, "daily", dt.datetime.fromisoformat("2026-11-22T21:43:00+08:00"), self.now)
+        weekly = self.claim()
+        (self.logs / sunday["name"]).mkdir()
+        with agent_shift.file_lock(self.logs / sunday["name"] / "runner.lock"), patch.object(agent_shift, "run_shift") as run:
+            self.assertEqual(agent_shift.execute_claim(self.logs, weekly, self.config)["status"], "claimed")
+            run.assert_not_called()
+        # A weekly review that started late still holds the runner at Monday 05:43: the morning shift is skipped, not overlapped.
+        self.now = dt.datetime.fromisoformat("2026-11-23T05:43:00+08:00")
+        morning = agent_shift.claim(self.logs, "daily", agent_shift.slot_at(self.now, daily), self.now)
+        self.assertEqual(morning["run_key"], "daily-2026-11-23-0543")
+        (self.logs / weekly["name"]).mkdir(exist_ok=True)
+        with agent_shift.file_lock(self.logs / weekly["name"] / "runner.lock"), patch.object(agent_shift, "run_shift") as run:
+            result = agent_shift.execute_claim(self.logs, morning, self.config)
+            run.assert_not_called()
+        self.assertEqual((result["status"], result["reason"]), ("skipped", "runner alive: " + weekly["name"]))
+
+    def test_daily_times_are_validated_and_retired_slot_targets_fail(self):
+        base = json.loads(agent_shift.SCHEDULE.read_text())
+        def load(change):
+            config = copy.deepcopy(base)
+            change(config["kinds"])
+            path = self.root / "schedule.json"
+            path.write_text(json.dumps(config))
+            return agent_shift.load_schedule(path, environ={})
+        def single(kinds):
+            kinds["daily"].pop("times")
+            kinds["daily"]["time"] = "21:43"
+        def weekly_list(kinds):
+            kinds["weekly"]["times"] = [kinds["weekly"].pop("time")]
+        invalid = {
+            "repeated": lambda kinds: kinds["daily"].update(times=["05:43", "05:43", "21:43"]),
+            "unpadded": lambda kinds: kinds["daily"].update(times=["5:43", "13:43", "21:43"]),
+            "unordered": lambda kinds: kinds["daily"].update(times=["21:43", "05:43", "13:43"]),
+            "time and times": lambda kinds: kinds["daily"].update(time="21:43"),
+            "weekly list": weekly_list,
+            "shift overruns the next slot": lambda kinds: kinds["daily"].update(minutes=400),
+            "public refresh overruns the next slot": lambda kinds: kinds["daily"].update(minutes=370),
+        }
+        for name, change in invalid.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                load(change)
+        with self.assertRaisesRegex(ValueError, "30-minute public refresh must fit between consecutive slots"):
+            load(lambda kinds: kinds["daily"].update(minutes=360, grace_minutes=91))
+        load(lambda kinds: kinds["daily"].update(minutes=360, grace_minutes=90))
+        # The cumulative 3/6/10 targets were replaced by one target per shift; stale copies fail explicitly.
+        with self.assertRaisesRegex(ValueError, "replaced by limits.new_prs_per_shift_target"):
+            load(lambda kinds: kinds["daily"].update(new_pr_targets={"05:43": 3, "13:43": 6, "21:43": 10}))
+        self.assertEqual(agent_shift.plan(load(single), self.now)["daily"]["run_key"], "daily-2026-11-23")
+
+    def test_new_pr_plan_sets_a_target_not_a_ceiling(self):
+        started = dt.datetime.fromisoformat("2026-11-22T05:43:12+00:00")
+        limits = {**agent_shift.CONFIG.get("limits", {}), "new_prs_per_shift_target": 10}
+        with patch.dict(agent_shift.CONFIG, {"limits": limits}), patch.object(ledger, "load", side_effect=AssertionError("no ledger read")):
+            plan = agent_shift.new_pr_plan(started)
+            for phrase in ("aims for 10 qualified new PRs", "counted from its start at 2026-11-22T05:43:12+00:00",
+                           "not a ceiling", "never disqualify", "keep shipping qualified work after reaching it",
+                           "it does not carry to the next shift", "updates, retries and reopens are not new PRs"):
+                self.assertIn(phrase, plan)
+            self.assertNotIn("refuses", plan)
+            limits["new_prs_per_shift_target"] = None
+            self.assertEqual(agent_shift.new_pr_plan(started), "")
+
+    def test_manual_shift_has_its_own_key_and_shares_the_timed_locks_without_replay(self):
+        self.now = dt.datetime.fromisoformat("2026-11-22T11:34:40+08:00")
+        daily = self.config["kinds"]["daily"]
+        slot = dt.datetime.fromisoformat("2026-11-22T11:34:00+08:00")
+        manual = agent_shift.claim(self.logs, "daily", slot, self.now, manual=True)
+        self.assertEqual((manual["run_key"], manual["name"]), ("manual-2026-11-22-1134", "auto-manual-2026-11-22-1134"))
+        self.assertIsNone(agent_shift.claim(self.logs, "daily", slot, self.now, manual=True))
+        timed = []
+        def run_manual(name, minutes, spec, kind, key, slot):
+            # The 13:43 slot arrives while the manual shift still runs: it is skipped, never overlapped.
+            self.now = dt.datetime.fromisoformat("2026-11-22T13:43:05+08:00")
+            cursors = {kind: "2026-11-22T11:00:00+08:00" for kind in self.config["kinds"]}
+            self.assertEqual(agent_shift.scheduled_records(self.logs, self.config, self.now, cursors), [])
+            # Even a claim that reached execution directly finds the runner busy.
+            late = agent_shift.claim(self.logs, "daily", slot.replace(hour=13, minute=43), self.now, force=True)
+            timed.append(agent_shift.execute_claim(self.logs, late, self.config))
+            return {"status": "exited 0", "reason": "", "ended_at": self.now.isoformat()}
+        with patch.object(agent_shift, "run_shift", side_effect=run_manual) as run:
+            agent_shift.execute_claim(self.logs, manual, self.config)
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[4], "manual-2026-11-22-1134")
+        self.assertEqual((timed[0]["status"], timed[0]["reason"]), ("skipped", "another runner is active"))
+        records = {record["run_key"]: (record["status"], record["reason"]) for record in agent_shift.read_records(self.logs)
+                   if "-force-" not in record["run_key"]}
+        self.assertEqual(records, {"manual-2026-11-22-1134": ("finished", ""),
+                                   "daily-2026-11-22-1343": ("skipped", "arrived during manual-2026-11-22-1134")})
+        # Once the manual shift ends, the skipped slot is not replayed.
+        self.now = dt.datetime.fromisoformat("2026-11-22T14:00:00+08:00")
+        cursors = {kind: "2026-11-22T13:43:05+08:00" for kind in self.config["kinds"]}
+        self.assertEqual(agent_shift.scheduled_records(self.logs, self.config, self.now, cursors), [])
+        self.assertIsNone(agent_shift.claim(self.logs, "daily", agent_shift.slot_at(self.now, daily), self.now))
+
+    def test_slot_missed_by_a_stopped_daemon_during_a_manual_shift_is_not_replayed(self):
+        manual = agent_shift.claim(self.logs, "daily", dt.datetime.fromisoformat("2026-11-22T11:34:00+08:00"),
+                                   dt.datetime.fromisoformat("2026-11-22T11:34:40+08:00"), manual=True)
+        agent_shift.transition(self.logs, manual, "finished", started_at="2026-11-22T11:34:40+08:00",
+                               ended_at="2026-11-22T14:00:00+08:00")
+        # The daemon stopped at 11:00 and returns at 14:01, still within the 13:43 slot's grace.
+        self.now = dt.datetime.fromisoformat("2026-11-22T14:01:00+08:00")
+        cursors = {kind: "2026-11-22T11:00:00+08:00" for kind in self.config["kinds"]}
+        with patch.object(agent_shift, "run_shift") as run:
+            self.assertEqual(agent_shift.scheduled_records(self.logs, self.config, self.now, cursors), [])
+            run.assert_not_called()
+        record, = [r for r in agent_shift.read_records(self.logs) if r["run_key"] == "daily-2026-11-22-1343"]
+        self.assertEqual((record["status"], record["reason"]), ("skipped", "arrived during manual-2026-11-22-1134"))
+        # A slot after the manual shift ended still runs.
+        self.now = dt.datetime.fromisoformat("2026-11-22T21:43:30+08:00")
+        cursors = {kind: "2026-11-22T14:01:00+08:00" for kind in self.config["kinds"]}
+        ready = agent_shift.scheduled_records(self.logs, self.config, self.now, cursors)
+        self.assertEqual([r["run_key"] for r in ready], ["daily-2026-11-22"])
+
+    def test_a_deferred_weekly_review_does_not_hold_later_daily_slots(self):
+        weekly = self.claim()
+        # A lease taken during preflight defers the review after execute_locked_claim marked it running.
+        with patch.object(agent_shift, "run_shift", side_effect=lambda *a: {"status": "deferred", "reason": "weekly waits",
+                                                                             "attempts": [], "ended_at": self.now.isoformat()}):
+            self.assertEqual(agent_shift.execute_claim(self.logs, weekly, self.config)["status"], "claimed")
+        saved, = agent_shift.read_records(self.logs)
+        self.assertNotIn("started_at", saved, "waiting is not running")
+        # Monday 06:31: the waiting review expires as missed; the daemon returns at 06:32, within the 05:43 grace.
+        self.now = dt.datetime.fromisoformat("2026-11-23T06:31:00+08:00")
+        agent_shift.hold_pending(self.logs, saved, self.config, self.now)
+        self.assertEqual(agent_shift.read_records(self.logs)[0]["reason"], "missed")
+        self.now = dt.datetime.fromisoformat("2026-11-23T06:32:00+08:00")
+        cursors = {kind: "2026-11-22T22:40:00+08:00" for kind in self.config["kinds"]}
+        ready = agent_shift.scheduled_records(self.logs, self.config, self.now, cursors)
+        self.assertEqual([record["run_key"] for record in ready], ["daily-2026-11-23-0543"])
+
+    def test_a_slot_during_the_public_refresh_after_a_manual_session_is_not_replayed(self):
+        self.now = dt.datetime.fromisoformat("2026-11-22T11:34:40+08:00")
+        manual = agent_shift.claim(self.logs, "daily", self.now.replace(second=0), self.now, manual=True)
+        def run_manual(*args):
+            # The session ended at 13:42, but the runner held its locks through the public refresh until 13:47.
+            self.now = dt.datetime.fromisoformat("2026-11-22T13:47:00+08:00")
+            return {"status": "exited 0", "reason": "", "ended_at": "2026-11-22T13:42:00+08:00"}
+        with patch.object(agent_shift, "run_shift", side_effect=run_manual):
+            agent_shift.execute_claim(self.logs, manual, self.config)
+        saved, = agent_shift.read_records(self.logs)
+        self.assertEqual(saved["ended_at"], "2026-11-22T13:47:00+08:00")
+        self.now = dt.datetime.fromisoformat("2026-11-22T13:48:00+08:00")
+        cursors = {kind: "2026-11-22T11:00:00+08:00" for kind in self.config["kinds"]}
+        self.assertEqual(agent_shift.scheduled_records(self.logs, self.config, self.now, cursors), [])
+        record, = [r for r in agent_shift.read_records(self.logs) if r["run_key"] == "daily-2026-11-22-1343"]
+        self.assertEqual(record["reason"], "arrived during manual-2026-11-22-1134")
+
+    def test_weekly_review_waits_for_a_running_manual_shift(self):
+        manual = agent_shift.claim(self.logs, "daily", self.now.replace(second=0), self.now, manual=True)
+        self.assertEqual(manual["run_key"], "manual-2026-11-22-2235")
+        weekly = self.claim()
+        (self.logs / manual["name"]).mkdir()
+        with agent_shift.file_lock(self.logs / manual["name"] / "runner.lock"), patch.object(agent_shift, "run_shift") as run:
+            self.assertEqual(agent_shift.execute_claim(self.logs, weekly, self.config)["status"], "claimed")
+            run.assert_not_called()
+
+    def test_manual_command_claims_this_minute_and_refuses_weekly_or_forced_keys(self):
+        self.now = dt.datetime.fromisoformat("2026-11-22T03:34:21+00:00")
+        with patch.object(agent_shift, "logs_dir", return_value=self.logs), \
+                patch.object(agent_shift, "load_schedule", return_value=self.config), \
+                patch.object(agent_shift, "execute_claim", return_value={"status": "exited 0"}) as execute, \
+                patch.object(sys, "argv", ["agent-shift.py", "run", "--manual", "--minutes", "360"]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(agent_shift.main(), 0)
+        record = execute.call_args.args[1]
+        self.assertEqual((record["run_key"], record["slot"], record["minutes_override"]),
+                         ("manual-2026-11-22-1134", "2026-11-22T11:34:00+08:00", 360))
+        for extra in (["--kind", "weekly"], ["--force-key"]):
+            with self.subTest(extra=extra), patch.object(sys, "argv", ["agent-shift.py", "run", "--manual", *extra]), \
+                    patch.object(agent_shift, "load_schedule", return_value=self.config), \
+                    patch.object(agent_shift, "execute_claim") as execute, \
+                    contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                agent_shift.main()
+            execute.assert_not_called()
 
     def test_claim_is_exclusive_and_force_preserves_the_original(self):
         with agent_shift.concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:

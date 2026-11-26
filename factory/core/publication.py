@@ -332,6 +332,11 @@ def tag_findings(cwd, oid, ctx):
 def check_push(args, cwd, item_dir=None, public=(), *, plan=None, advertised=None):
     """`public` names commits already published upstream (a fresh fetch of the PR target), so a stale
     fork does not make upstream history count as outgoing."""
+    with leaks.reuse():
+        return push_findings(args, cwd, item_dir, public, plan=plan, advertised=advertised)
+
+
+def push_findings(args, cwd, item_dir, public, *, plan, advertised):
     _, _, ctx = context(item_dir)
     found = []
     target = push_target(args)

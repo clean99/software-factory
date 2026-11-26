@@ -54,6 +54,18 @@ class ReplyGuard(unittest.TestCase):
         self.fetch.assert_called_once_with("pr", "view", self.meta["pr_url"], "--json", "comments,state,headRefOid", timeout=120)
         self.assertEqual(read_json(self.directory / "item.json")["replies"][0]["url"], "comment-url")
 
+    def test_withdrawn_reply_is_never_reposted_even_with_force(self):
+        sha = hashlib.sha256((self.directory / "reply.md").read_bytes()).hexdigest()
+        for record in ({"file": "reply.md"}, {"file": "older.md", "sha256": sha}):
+            with self.subTest(record=record):
+                write_json(self.directory / "item.json", {**self.meta, "replies": [
+                    {**record, "url": "https://github.com/o/r/pull/1#issuecomment-1", "at": "2026-11-25T02:37:00Z",
+                     "withdrawn_at": "2026-11-25T02:44:00Z", "withdrawn_reason": "owner: no CI-status replies"}]})
+                for force in (False, True):
+                    with self.assertRaisesRegex(SystemExit, "withdrawn .* do not repost"):
+                        self.reply(force=force)
+        self.post.assert_not_called()
+
     def test_closed_or_merged_pr_is_refused_without_mutation(self):
         before = (self.directory / "item.json").read_bytes()
         for state in ("CLOSED", "MERGED"):

@@ -112,7 +112,7 @@ class NextActions(unittest.TestCase):
 
         patches = [self.header_projection,
                    patch.dict(CONFIG, {"runs_dir": str(self.runs), "ledger_file": str(self.ledger), "repos_dir": str(self.root / "repos"),
-                                      "limits": {**CONFIG["limits"], "max_hunts_per_shift": 2, "review_budget_minutes": 120}}),
+                                      "limits": {**CONFIG["limits"], "review_budget_minutes": 120}}),
                    patch.object(nextaction, "ROOT", self.root), patch.object(shiftlock, "ROOT", self.root),
                    patch.object(nextaction.clean, "ROOT", self.root),
                    patch.object(profile_readme, "ROOT", self.root),
@@ -198,7 +198,7 @@ class NextActions(unittest.TestCase):
     def test_all_record_destinations_precede_scouting_and_explain_profile_edits(self):
         self.row(status="merged")
         self.lanes = ["o/r"]
-        self.plan["repo_slots"] = [{"repo": "o/r", "free": 1}]
+        self.plan["repo_slots"] = [{"repo": "o/r"}]
         actions = self.actions()
         kinds = [a["kind"] for a in actions]
         self.assertLess(max(i for i, kind in enumerate(kinds) if kind == "records"), kinds.index("wave"))
@@ -244,7 +244,7 @@ class NextActions(unittest.TestCase):
 
     def test_provenance_and_validation_commands_have_no_sentence_suffix(self):
         self.lanes = ["o/r"]
-        self.plan["repo_slots"] = [{"repo": "o/r", "free": 1}]
+        self.plan["repo_slots"] = [{"repo": "o/r"}]
         commands = self.actions("wave")[0]["commands"]
         provenance = next(c for c in commands if "bin/factory provenance" in c)
         self.assertTrue(provenance.endswith("<transcript dir>"), provenance)
@@ -430,7 +430,7 @@ class NextActions(unittest.TestCase):
         timed.save()
         self.assertEqual(self.actions("takeover"), [])
 
-    def test_wave_selects_roles_slots_rounds_and_hunt_limit(self):
+    def test_wave_selects_roles_slots_rounds_and_every_eligible_lane(self):
         for name, bucket, verdict in (("fix", "fix_round", "fix-needed"), ("stale", "stale_reviews", "ship")):
             self.review(self.item(name, bucket, repo="o/busy"), verdict=verdict)
         unreviewed = self.item("unreviewed", "unreviewed", repo="o/busy")
@@ -440,14 +440,15 @@ class NextActions(unittest.TestCase):
         self.review(repeated, "fix-needed")
         repeated.file("review-round1.md").write_text(f"head: {HEAD}\nverdict: fix-needed\n")
         self.lanes = ["o/busy", "o/stopped", "o/full", "o/never", "o/one", "o/two", "o/three"]
-        self.plan["repo_slots"] = [{"repo": r, "free": 0 if r == "o/full" else 1, "stopped": r == "o/stopped"}
+        self.plan["repo_slots"] = [{"repo": r, "stopped": r == "o/stopped"}
                                    for r in self.lanes if r != "o/never"]
         wave = self.wave()
         self.assertEqual(wave["concurrency"], 3)
         self.assertEqual(wave["factory"], str(self.root))
         self.assertEqual([(t["role"], pathlib.Path(t["item"]).name) for t in wave["tasks"] if "item" in t],
                          [("fix", "fix"), ("review", "stale"), ("review", "unreviewed")])
-        self.assertEqual([t["repo"] for t in wave["tasks"] if t["role"] == "scout"], ["o/never", "o/one"])
+        # Every eligible lane is scouted; only busy and stopped lanes stay out.
+        self.assertEqual([t["repo"] for t in wave["tasks"] if t["role"] == "scout"], ["o/full", "o/never", "o/one", "o/two", "o/three"])
         self.assertIn("--ttl-hours 8", self.actions("wave")[0]["commands"][0])
         self.assertIn("bin/factory provenance", " ".join(self.actions("wave")[0]["commands"]))
 
@@ -608,75 +609,56 @@ class NextActions(unittest.TestCase):
             self.assertEqual(nextaction.code_items(), expected)
             actions.assert_called_once_with(observe=False, include_release=False)
 
-    def test_hunts_are_bounded_across_waves_and_empty_scout_can_be_acked(self):
+    def test_each_lane_is_hunted_once_per_shift_and_empty_scout_can_be_acked(self):
         self.lanes = ["o/one", "o/two", "o/three"]
-        self.plan["repo_slots"] = [{"repo": r, "free": 1, "stopped": False} for r in self.lanes]
-        scout = self.wave()["tasks"][0]
-        nextaction.acknowledge(scout["key"], "No candidate: read all maintainer invitations; every issue is claimed")
+        self.plan["repo_slots"] = [{"repo": r, "stopped": False} for r in self.lanes]
+        first = self.wave()["tasks"]
+        self.assertEqual([task["repo"] for task in first], self.lanes)
+        nextaction.acknowledge(first[0]["key"], "No candidate: read all maintainer invitations; every issue is claimed")
         self.item("new", repo="o/two", created_at=self.clock.isoformat(), pr_url="https://github.com/o/two/pull/1")
+        self.assertEqual(self.wave()["tasks"], first[2:])
+        nextaction.acknowledge(first[2]["key"], "No candidate")
         self.assertIsNone(self.wave())
         self.clock += dt.timedelta(days=1)
-        self.assertIsNotNone(self.wave())
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], self.lanes)
 
     def test_scouts_rotate_across_generations_by_last_scout_then_lane_order(self):
         self.lanes = ["o/one", "o/two", "o/three", "o/four", "o/five"]
-        self.plan["repo_slots"] = [{"repo": r, "free": 1, "merged": 1} for r in self.lanes]
+        self.plan["repo_slots"] = [{"repo": r, "merged": 1} for r in self.lanes]
         first = self.wave()["tasks"]
-        self.assertEqual([task["repo"] for task in first], self.lanes[:2])
+        self.assertEqual([task["repo"] for task in first], self.lanes)
+        for task in first[3:]:
+            nextaction.acknowledge(task["key"], "No wanted unclaimed candidate")
+        self.clock += dt.timedelta(hours=1)
         nextaction.acknowledge(first[0]["key"], "All examined requests are claimed")
         # A productive scout counts even when its candidate is later dropped.
         self.item("candidate", repo="o/two", created_at=self.clock.isoformat(), status="dropped")
+        nextaction.acknowledge(first[2]["key"], "No wanted unclaimed candidate")
         self.assertIsNone(self.wave())
         saved = read_json(self.root / nextaction.ACKS)
         self.assertEqual(saved[first[0]["key"]]["repo"], "o/one")
-        self.clock += dt.timedelta(days=4)
-        second = self.wave()["tasks"]
-        self.assertEqual([task["repo"] for task in second], self.lanes[2:4])
-        for task in second:
-            nextaction.acknowledge(task["key"], "No wanted unclaimed candidate")
-        self.clock += dt.timedelta(days=4)
-        # The never-scouted lane wins, followed by the oldest (tied in lane order).
-        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/five", "o/one"])
-
-    def test_empty_scout_cools_down_between_same_day_leases_until_three_days(self):
-        self.lanes = ["o/r"]
-        self.assertTrue(shiftlock.run("acquire", "first")["ok"])
-        task, = self.wave()["tasks"]
-        nextaction.acknowledge(task["key"], "No unclaimed candidate")
-        self.assertTrue(shiftlock.run("release", "first")["ok"])
-        self.clock += dt.timedelta(hours=1)
-        self.assertTrue(shiftlock.run("acquire", "second")["ok"])
-        self.assertIsNone(self.wave())
-        self.assertTrue(shiftlock.run("release", "second")["ok"])
-        self.clock += dt.timedelta(days=3, hours=-1, seconds=-1)
-        self.assertIsNone(self.wave())
-        self.clock += dt.timedelta(seconds=1)
-        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/r"])
-
-    def test_new_saved_upstream_feedback_breaks_cooldown_but_rereads_do_not(self):
-        self.lanes = ["o/r"]
-        event = self.event("community-comment", key="old-comment")
-        task, = self.wave()["tasks"]
-        nextaction.acknowledge(task["key"], "No suitable candidate after reading this feedback")
+        self.lanes.append("o/six")
+        self.plan["repo_slots"].append({"repo": "o/six", "merged": 1})
         self.clock += dt.timedelta(days=1)
-        self.event("community-comment", key=event["key"])
-        self.event("repo-mergers-read", key="new-poll")
-        self.assertIsNone(self.wave())
-        self.event("maintainer-comment", key="new-invitation")
-        task, = self.wave()["tasks"]
-        self.assertEqual(task["repo"], "o/r")
-        nextaction.acknowledge(task["key"], "Invitation is already claimed")
-        self.clock += dt.timedelta(days=1)
-        self.assertIsNone(self.wave())
+        # The never-scouted lane wins, then the oldest scouts, tied in lane order.
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/six", "o/four", "o/five", "o/one", "o/two", "o/three"])
 
-    def test_new_merge_breaks_cooldown_without_any_network_read(self):
+    def test_empty_scout_waits_for_the_next_shift_with_no_cooldown(self):
         self.lanes = ["o/r"]
-        task, = self.wave()["tasks"]
-        nextaction.acknowledge(task["key"], "No suitable candidate")
-        self.clock += dt.timedelta(days=1)
-        self.assertIsNone(self.wave())
-        self.row(status="merged", merged_at=self.clock.isoformat())
-        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/r"])
+        with patch.dict(os.environ):
+            os.environ.pop(shiftlock.RUN_STARTED, None)
+            self.assertTrue(shiftlock.run("acquire", "first")["ok"])
+            run_start = self.clock.isoformat()
+            task, = self.wave()["tasks"]
+            nextaction.acknowledge(task["key"], "No unclaimed candidate")
+            self.assertIsNone(self.wave(), "the same shift does not scout a lane twice")
+            self.assertTrue(shiftlock.run("release", "first")["ok"])
+            self.clock += dt.timedelta(hours=1)
+            self.assertTrue(shiftlock.run("acquire", "second")["ok"])
+            with patch.dict(os.environ, {shiftlock.RUN_STARTED: run_start}):
+                self.assertIsNone(self.wave(), "a re-taken lease in the same scheduled run is still the same shift")
+            # The next shift scouts it again, with no upstream activity in between.
+            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/r"])
 
     def test_scout_history_handles_case_renames_and_preserves_legacy_current_shift_ack(self):
         self.lanes = ["o/current", "o/other"]
@@ -688,180 +670,218 @@ class NextActions(unittest.TestCase):
         with patch.dict(CONFIG, {"repo_renames": {"o/old": "o/current"}}):
             self.assertEqual(self.wave()["tasks"], [second])
             self.clock += dt.timedelta(days=1)
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/other"])
+            # O/OLD's scout yesterday is o/current's, so the never-scouted lane goes first.
+            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/other", "o/current"])
 
-    def test_active_exploration_uses_first_merge_slot_and_respects_stale_or_full_slots(self):
-        self.exploration = ["o/probe-full", "o/stale", "o/new"]
-        self.row(repo="o/probe-full")
-        self.row(number=2, repo="o/stale", submitted_at=(self.clock - dt.timedelta(days=4)).isoformat())
+    def test_active_exploration_is_not_blocked_by_open_pr_count_or_short_waits(self):
+        self.exploration = ["o/probe", "o/waiting", "o/new"]
+        for number in range(1, 6):
+            self.row(number, repo="o/probe")
+        self.row(number=6, repo="o/waiting", status="silent", submitted_at=(self.clock - dt.timedelta(days=4)).isoformat())
         with patch.object(nextaction.plan, "now", return_value=self.clock):
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
+            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], self.exploration)
 
-    def test_real_active_exploration_waits_for_depth_and_is_limited_to_one(self):
+    def test_real_active_exploration_waits_for_depth_then_takes_every_lane(self):
         def lane(repo):
             return {"repo": repo, "state": "active", "reason": "Fixture", "since": "2026-11-01"}
         path = self.root / "lines/oss/lanes.json"
         path.parent.mkdir(parents=True)
         write_json(path, {"depth": [lane("o/depth")], "explore": [lane("o/new1"), lane("o/new2")]})
         write_json(self.root / nextaction.ACKS, {
-            "scout-prior": {"repo": "o/depth", "at": (self.clock - dt.timedelta(days=4)).isoformat(), "note": "No candidate"}})
+            "scout-prior": {"repo": "o/depth", "at": (self.clock - dt.timedelta(days=1)).isoformat(), "note": "No candidate"}})
         self.assertEqual(read_json(self.ledger), [])
         with patch.object(nextaction.lanes, "ROOT", self.root), patch.object(nextaction.lanes, "order", LANE_ORDER), \
-                patch.object(nextaction.plan, "run", side_effect=PLAN_RUN), \
-                patch.dict(CONFIG["limits"], {"max_hunts_per_shift": 3}):
+                patch.object(nextaction.plan, "run", side_effect=PLAN_RUN):
             depth, = self.wave()["tasks"]
             self.assertEqual(depth["repo"], "o/depth")
             nextaction.acknowledge(depth["key"], "No suitable depth candidate")
-            exploration, = self.wave()["tasks"]
-            self.assertEqual(exploration["repo"], "o/new1")
-            nextaction.acknowledge(exploration["key"], "No suitable exploration candidate")
+            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new1", "o/new2"])
+            for task in self.wave()["tasks"]:
+                nextaction.acknowledge(task["key"], "No suitable exploration candidate")
             self.assertIsNone(self.wave())
-            self.clock += dt.timedelta(days=4)
+            self.clock += dt.timedelta(days=1)
             depth, = self.wave()["tasks"]
             self.assertEqual(depth["repo"], "o/depth")
-            nextaction.acknowledge(depth["key"], "No suitable depth candidate")
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new2"])
 
-    def test_exploration_requires_each_depth_lane_to_be_empty_or_cooling_down(self):
+    def test_exploration_requires_each_depth_lane_to_be_empty_in_this_shift(self):
         self.lanes = ["o/one", "o/two"]
         self.exploration = ["o/new"]
-        with patch.dict(CONFIG["limits"], {"max_hunts_per_shift": 3}):
-            first, second = self.wave()["tasks"]
-            nextaction.acknowledge(first["key"], "No suitable candidate")
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/two"])
-            nextaction.acknowledge(second["key"], "No suitable candidate")
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
-            self.clock += dt.timedelta(days=1)
-            # Yesterday's empty hunts satisfy the depth condition while cooling down.
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
+        first, second = self.wave()["tasks"]
+        nextaction.acknowledge(first["key"], "No suitable candidate")
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/two"])
+        nextaction.acknowledge(second["key"], "No suitable candidate")
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
+        self.clock += dt.timedelta(days=1)
+        # Yesterday's empty hunts no longer count: the next shift scouts depth again first.
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/one", "o/two"])
 
-    def test_productive_depth_hunt_does_not_unlock_exploration(self):
+    def test_productive_depth_hunt_unlocks_exploration_for_the_rest_of_the_shift(self):
         self.lanes = ["o/depth"]
         self.exploration = ["o/new1", "o/new2"]
-        depth = self.wave()["tasks"][0]
-        nextaction.acknowledge(depth["key"], "No suitable candidate")
-        # A saved candidate overrides even an earlier empty acknowledgement.
+        # Each lane is scouted once per shift, so a depth lane whose scout found a candidate is cleared too.
         self.item("candidate", repo="o/depth", created_at=self.clock.isoformat(), status="dropped")
-        self.assertIsNone(self.wave())
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new1", "o/new2"])
         self.clock += dt.timedelta(days=1)
         self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/depth"])
 
-    def test_productive_exploration_hunt_consumes_the_one_repo_allowance(self):
-        self.exploration = ["o/new1", "o/new2"]
-        self.item("candidate", repo="o/new1", created_at=self.clock.isoformat(), status="dropped")
+    def test_depth_proposal_waiting_on_maintainers_does_not_hold_back_exploration(self):
+        self.lanes = ["o/depth"]
+        self.exploration = ["o/new"]
+        self.item("proposal", repo="o/depth", created_at=(self.clock - dt.timedelta(days=2)).isoformat(),
+                  status="awaiting-maintainer", proposal_url="https://github.com/o/depth/issues/1#issuecomment-1")
+        # The waiting lane is not scouted again, and exploration follows.
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
+        self.item("building", repo="o/depth", created_at=(self.clock - dt.timedelta(days=2)).isoformat())
         self.assertIsNone(self.wave())
 
-    def test_legacy_current_shift_empty_ack_unlocks_only_one_exploration(self):
+    def test_awaiting_status_without_a_posted_proposal_still_holds_back_exploration(self):
+        self.lanes = ["o/depth"]
+        self.exploration = ["o/new"]
+        self.item("tracked", repo="o/depth", created_at=(self.clock - dt.timedelta(days=2)).isoformat(),
+                  status="awaiting-maintainer", tracking_issue=7)
+        self.assertIsNone(self.wave())
+
+    def test_depth_work_started_this_shift_lets_exploration_run_but_blocks_the_next_shift(self):
+        self.lanes = ["o/depth"]
+        self.exploration = ["o/new"]
+        self.item("building", repo="o/depth", created_at=self.clock.isoformat())
+        # The depth lane is not scouted twice; exploration runs beside its implementation.
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
+        self.clock += dt.timedelta(days=1)
+        self.assertIsNone(self.wave())
+
+    def test_productive_exploration_hunt_counts_once_and_leaves_other_lanes(self):
+        self.exploration = ["o/new1", "o/new2"]
+        self.item("candidate", repo="o/new1", created_at=self.clock.isoformat(), status="dropped")
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new2"])
+
+    def test_legacy_current_shift_empty_ack_unlocks_exploration(self):
         self.lanes = ["o/depth"]
         self.exploration = ["o/new1", "o/new2"]
         depth = self.wave()["tasks"][0]
         write_json(self.root / nextaction.ACKS, {depth["key"]: {"at": self.clock.isoformat(), "note": "No candidate"}})
-        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new1"])
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new1", "o/new2"])
 
-    def test_full_depth_lane_unlocks_exploration_but_unfinished_work_with_room_does_not(self):
+    def test_unresponsive_depth_lane_unlocks_exploration_but_unfinished_work_does_not(self):
         self.lanes = ["o/depth"]
         self.exploration = ["o/new"]
-        self.plan["repo_slots"] = [{"repo": "o/depth", "free": 0}]
+        self.plan["repo_slots"] = [{"repo": "o/depth", "stopped": True}]
         self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
         self.plan["repo_slots"] = []
         self.item("unfinished", repo="o/depth")
         self.assertIsNone(self.wave())
 
-    def test_mixed_depth_conditions_unlock_only_one_exploration_hunt(self):
-        self.lanes = ["o/full", "o/cooling", "o/remaining"]
+    def test_mixed_depth_conditions_unlock_exploration(self):
+        self.lanes = ["o/full", "o/yesterday", "o/remaining"]
         self.exploration = ["o/new1", "o/new2"]
-        self.plan["repo_slots"] = [{"repo": "o/full", "free": 0}]
+        self.plan["repo_slots"] = [{"repo": "o/full", "stopped": True}]
         write_json(self.root / nextaction.ACKS, {
-            "scout-prior": {"repo": "o/cooling", "at": (self.clock - dt.timedelta(days=1)).isoformat(), "note": "No candidate"}})
-        depth, = self.wave()["tasks"]
-        self.assertEqual(depth["repo"], "o/remaining")
-        nextaction.acknowledge(depth["key"], "No suitable depth candidate")
-        exploration, = self.wave()["tasks"]
-        self.assertEqual(exploration["repo"], "o/new1")
-        nextaction.acknowledge(exploration["key"], "No suitable exploration candidate")
+            "scout-prior": {"repo": "o/yesterday", "at": (self.clock - dt.timedelta(days=1)).isoformat(), "note": "No candidate"}})
+        depth = self.wave()["tasks"]
+        self.assertEqual([task["repo"] for task in depth], ["o/remaining", "o/yesterday"])
+        for task in depth:
+            nextaction.acknowledge(task["key"], "No suitable depth candidate")
+        exploration = self.wave()["tasks"]
+        self.assertEqual([task["repo"] for task in exploration], ["o/new1", "o/new2"])
+        for task in exploration:
+            nextaction.acknowledge(task["key"], "No suitable exploration candidate")
         self.assertIsNone(self.wave())
 
-    def test_new_upstream_activity_reopens_depth_before_exploration(self):
-        self.lanes = ["o/depth"]
-        self.exploration = ["o/new"]
-        depth, = self.wave()["tasks"]
-        nextaction.acknowledge(depth["key"], "No suitable depth candidate")
-        self.clock += dt.timedelta(days=1)
-        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
-        self.event("maintainer-comment", row={"repo": "o/depth", "url": "https://github.com/o/depth/pull/1"})
-        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/depth"])
-
-    def test_productive_depth_can_unlock_exploration_only_when_its_slot_is_full(self):
+    def test_productive_or_unresponsive_depth_unlocks_exploration(self):
         self.lanes = ["o/depth"]
         self.exploration = ["o/new"]
         self.item("candidate", repo="o/depth", created_at=self.clock.isoformat(), pr_url="https://github.com/o/depth/pull/1")
         self.row(repo="o/depth", status="merged")
-        self.plan["repo_slots"] = [{"repo": "o/depth", "free": 1}]
-        self.assertIsNone(self.wave())
-        self.plan["repo_slots"][0]["free"] = 0
+        self.plan["repo_slots"] = [{"repo": "o/depth"}]
+        self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
+        self.plan["repo_slots"][0]["stopped"] = True
         self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
 
-    def test_shared_first_merge_pool_blocks_exploration_not_proven_depth(self):
+    def test_config_has_no_scout_count_cap_and_each_lane_counts_once(self):
+        limits = read_json(ROOT / "factory.config.json")["limits"]
+        self.assertNotIn("max_hunts_per_shift", limits)
+        self.assertNotIn("max_explore_per_shift", limits)
+        self.lanes = ["o/one", "o/two", "o/three", "o/four", "o/five", "o/six"]
+        tasks = self.wave()["tasks"]
+        self.assertEqual([task["repo"] for task in tasks], self.lanes)
+        nextaction.acknowledge(tasks[0]["key"], "No candidate")
+        self.item("candidate", repo=tasks[1]["repo"], created_at=self.clock.isoformat(), status="dropped")
+        self.assertEqual(self.wave()["tasks"], tasks[2:])
+        for task in tasks[2:]:
+            nextaction.acknowledge(task["key"], "No candidate")
+        self.assertIsNone(self.wave())
+
+    def test_every_active_exploration_lane_follows_cleared_depth(self):
         self.lanes = ["o/depth"]
-        self.exploration = ["o/new"]
-        self.row(repo="o/depth", status="merged")
-        self.row(number=2, repo="o/depth")
-        probe = self.row(number=3, repo="o/probe")
-        with patch.dict(CONFIG["limits"], {"max_open_prs_total": 1}), \
-                patch.object(nextaction.plan, "now", return_value=self.clock):
-            depth, = self.wave()["tasks"]
-            self.assertEqual(depth["repo"], "o/depth")
-            nextaction.acknowledge(depth["key"], "No suitable depth candidate")
-            self.assertIsNone(self.wave())
-            rows = read_json(self.ledger)
-            next(row for row in rows if row["url"] == probe["url"])["status"] = "closed"
-            write_json(self.ledger, rows)
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
+        self.exploration = ["o/new1", "o/new2", "o/new3"]
+        depth, = self.wave()["tasks"]
+        nextaction.acknowledge(depth["key"], "No suitable depth candidate")
+        exploration = self.wave()["tasks"]
+        self.assertEqual([task["repo"] for task in exploration], self.exploration)
+        nextaction.acknowledge(exploration[0]["key"], "No suitable exploration candidate")
+        self.assertEqual(self.wave()["tasks"], exploration[1:])
+        for task in exploration[1:]:
+            nextaction.acknowledge(task["key"], "No suitable exploration candidate")
+        self.assertIsNone(self.wave())
 
-    def test_first_merge_pool_counts_only_recent_outside_open_prs_with_canonical_names(self):
-        self.exploration = ["o/new"]
-        self.row(repo="o/proven", status="merged")
-        self.row(number=2, repo="O/OLD")
-        self.row(number=3, repo=CONFIG["github_user"].upper() + "/own")
-        self.row(number=4, repo="o/closed", status="closed")
-        self.row(number=5, repo="o/old-open", submitted_at=(self.clock - dt.timedelta(days=181)).isoformat())
-        with patch.dict(CONFIG["limits"], {"max_open_prs_total": 1}), \
-                patch.dict(CONFIG, {"repo_renames": {"o/old": "o/proven"}}):
-            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/new"])
-            self.row(number=6, repo="o/boundary", submitted_at=(self.clock - dt.timedelta(days=180)).isoformat())
-            self.assertIsNone(self.wave())
+    def test_shift_target_does_not_hold_scouts_or_new_contribution_work(self):
+        self.lanes = ["o/depth"]
+        self.item("ready", "ship_ready")
+        building = self.item("building", "needs_implementation", schema=2,
+                             created_at=self.clock.isoformat(), updated_at=self.clock.isoformat())
+        with patch.dict(CONFIG["limits"], {"new_prs_per_shift_target": 10}), \
+                patch.dict(os.environ, {shiftlock.RUN_STARTED: self.clock.isoformat()}):
+            for number in range(1, 13):
+                self.row(number, submitted_at=self.clock.isoformat())
+                if number not in (10, 12):
+                    continue
+                with self.subTest(opened=number):
+                    pending = self.actions()
+                    self.assertEqual(len([a for a in pending if a["kind"] == "ship"]), 1)
+                    tasks = self.wave()["tasks"]
+                    self.assertIn(("implement", nextaction.item_target(building)),
+                                  [(task["role"], task.get("item")) for task in tasks])
+                    self.assertEqual([task["repo"] for task in tasks if task["role"] == "scout"], ["o/depth"])
+                    report, = [a for a in pending if a["kind"] == "report"]
+                    self.assertIn(f"This shift has opened {number} new PRs toward its target of 10; the target is not a ceiling, "
+                                  "and a shortfall is reported with its count and reason.", report["why"])
 
-    def test_exploration_uses_configured_before_first_merge_cap(self):
-        self.exploration = ["o/probe"]
-        self.row(repo="o/probe")
+    def test_scout_wave_runs_one_watch_scan_per_shift_first(self):
+        self.lanes = ["o/depth"]
+        with patch.dict(os.environ, {shiftlock.RUN_STARTED: self.clock.isoformat()}):
+            wave, = self.actions("wave")
+            commands = wave["commands"]
+            self.assertEqual(commands[1], "bin/factory watch")
+            self.assertIn("newest runs/<date>/watch/ report", commands[2])
+            self.assertLess(1, next(i for i, text in enumerate(commands) if text.startswith("Call Workflow")))
+            folder = self.runs / self.clock.date().isoformat() / "watch"
+            folder.mkdir(parents=True)
+            write_json(folder / "before.json", {"at": (self.clock - dt.timedelta(minutes=1)).isoformat(), "dry_run": False})
+            write_json(folder / "dry.json", {"at": self.clock.isoformat(), "dry_run": True})
+            (folder / "broken.json").write_text("{")
+            self.assertIn("bin/factory watch", self.actions("wave")[0]["commands"], "older, dry-run and unreadable scans do not count")
+            failed = {"at": (self.clock + dt.timedelta(minutes=1)).isoformat(), "dry_run": False,
+                      "repos": [{"repo": "o/depth", "status": "error", "error": "GitHub rate limit"}]}
+            write_json(folder / "failed.json", failed)
+            self.assertIn("bin/factory watch", self.actions("wave")[0]["commands"], "a failed scan runs again")
+            write_json(folder / "after.json", {**failed, "repos": [{"repo": "o/depth", "status": "ok"}]})
+            self.assertNotIn("bin/factory watch", self.actions("wave")[0]["commands"])
+
+    def test_unresponsive_ledger_history_skips_only_that_repository_scout(self):
+        self.lanes = ["o/silent", "o/active"]
+        for number in (1, 2, 3):
+            self.row(number, repo="o/silent", status="silent", lesson="Recorded response history",
+                     submitted_at=(self.clock - dt.timedelta(days=40)).isoformat())
+        self.row(4, repo="o/active", status="silent", lesson="Keep waiting",
+                 submitted_at=(self.clock - dt.timedelta(days=40)).isoformat())
         with patch.object(nextaction.plan, "now", return_value=self.clock):
-            self.assertIsNone(self.wave())
-            with patch.dict(CONFIG["limits"], {"max_open_prs_per_repo_before_first_merge": 2}):
-                self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/probe"])
-                self.row(number=2, repo="o/probe")
-                self.assertIsNone(self.wave())
+            self.assertEqual([task["repo"] for task in self.wave()["tasks"]], ["o/active"])
 
-    def test_configured_three_hunt_budget_counts_empty_and_productive_hunts(self):
+    def test_wave_lists_every_eligible_lane_and_keeps_three_worker_slots(self):
         self.lanes = ["o/one", "o/two", "o/three", "o/four"]
-        configured = read_json(ROOT / "factory.config.json")["limits"]["max_hunts_per_shift"]
-        self.assertEqual(configured, 3)
-        with patch.dict(CONFIG["limits"], {"max_hunts_per_shift": configured}):
-            first, second, third = self.wave()["tasks"]
-            self.assertEqual([first["repo"], second["repo"], third["repo"]], self.lanes[:3])
-            nextaction.acknowledge(first["key"], "No candidate")
-            self.item("candidate", repo=second["repo"], created_at=self.clock.isoformat(), status="dropped")
-            self.assertEqual(self.wave()["tasks"], [third])
-            nextaction.acknowledge(third["key"], "No candidate")
-            self.assertIsNone(self.wave())
-
-    def test_default_hunt_budget_uses_three_worker_slots_without_overriding_explicit_limit(self):
-        self.lanes = ["o/one", "o/two", "o/three", "o/four"]
-        limits = {key: value for key, value in CONFIG["limits"].items() if key != "max_hunts_per_shift"}
-        with patch.dict(CONFIG, {"limits": limits}):
-            wave = self.wave()
-            self.assertEqual(wave["concurrency"], 3)
-            self.assertEqual(len(wave["tasks"]), 3)
-        self.assertEqual(len(self.wave()["tasks"]), 2)
+        wave = self.wave()
+        self.assertEqual(wave["concurrency"], 3)
+        self.assertEqual([task["repo"] for task in wave["tasks"]], self.lanes)
 
     def test_stalled_legacy_item_gets_triage_before_other_repositories_scout(self):
         item = self.item("stalled", "unreviewed", created_at=(self.clock - dt.timedelta(days=5)).isoformat())
@@ -1017,6 +1037,171 @@ class NextActions(unittest.TestCase):
         self.assertIsNotNone(self.wave())
         write_json(self.ledger, [{**row, "status": "merged", "merged_at": self.clock.isoformat()}])
         self.assertIsNone(self.wave())
+
+    def inline(self, row, comment_id, kind="community-inline", body="formatToParts aborts V8 for ksh"):
+        return self.event(kind, row, key=f"{row['url']}#{kind}#{comment_id}",
+                          detail={"text": f"COMMUNITY INLINE {row['url']} by bardrop", "body": body, "author_login": "bardrop",
+                                  "comment_id": comment_id, "thread_comment_id": comment_id})
+
+    def test_community_inline_feedback_is_followed_but_an_empty_review_summary_is_not(self):
+        item = self.item("dp743", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat(), inline_pending=[11, 12])
+        self.event("community-review", row, detail={"text": "COMMUNITY REVIEW COMMENTED by bardrop: ''", "body": "", "state": "COMMENTED"})
+        self.assertIsNone(self.wave())
+        first, second = self.inline(row, 11), self.inline(row, 12, body="divider becomes U+200F")
+        task, = self.wave()["tasks"]
+        self.assertEqual(task["role"], "follow")
+        self.assertIn(first["key"], task["note"])
+        self.assertIn(second["key"], task["note"])
+        self.assertIn("divider becomes U+200F", task["note"])
+
+    def test_inline_feedback_stays_owed_until_every_thread_reply_is_posted(self):
+        item = self.item("dp743", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat(), inline_pending=[11, 12])
+        events = [self.inline(row, 11), self.inline(row, 12)]
+        for name in ("reply-1.md", "reply-2.md"):
+            item.file(name).write_text("Fixed in the latest commit.")
+        write_json(item.file("follow.json"), {"event_keys": [e["key"] for e in events],
+                                              "replies": [{"file": "reply-1.md", "reply_to": 11, "destination": "inline"},
+                                                          {"file": "reply-2.md", "reply_to": 12, "destination": "inline"}],
+                                              "requests": [{"request": "crash", "disposition": "accepted", "evidence": "receipt"}]})
+        self.clock += dt.timedelta(minutes=5)
+        # A failed post records no URL; a restarted shift reads the same saved events and still owes both threads.
+        item.meta["thread_replies"] = [{"file": "reply-1.md", "comment_id": 11, "url": "", "at": self.clock.isoformat()}]
+        item.save()
+        self.assertEqual(self.wave()["tasks"][0]["role"], "follow")
+        item.meta["thread_replies"] = [{"file": "reply-1.md", "comment_id": 11, "url": row["url"] + "#r1", "at": self.clock.isoformat()}]
+        item.save()
+        self.assertEqual(self.wave()["tasks"][0]["role"], "follow")
+        item.meta["thread_replies"].append({"file": "reply-2.md", "comment_id": 12, "url": row["url"] + "#r2", "at": self.clock.isoformat()})
+        item.save()
+        self.assertIsNone(self.wave())
+
+    def test_settled_inline_thread_and_repeated_observation_do_not_redispatch(self):
+        item = self.item("dp743", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat(), inline_pending=[11])
+        event = self.inline(row, 11)
+        self.live_events = [{**event, "at": (self.clock + dt.timedelta(hours=8)).isoformat()}]
+        saved, _ = nextaction.observations(True)
+        self.assertEqual([e["at"] for e in saved if e["key"] == event["key"]], [event["at"]])
+        self.assertEqual(self.wave()["tasks"][0]["role"], "follow")
+        write_json(self.ledger, [{**row, "inline_pending": [], "last_check": (self.clock + dt.timedelta(minutes=1)).isoformat()}])
+        self.assertIsNone(self.wave())
+
+    def test_external_status_is_classified_internally_and_never_dispatched_as_a_reply(self):
+        # Owner, 2026-11-25: only problems a person or bot raised get a public reply; CI/deploy status does not.
+        item = self.item("ctx7", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat())
+        self.event("external-checks", row, detail={"text": "EXTERNAL CHECKS: Vercel"})
+        self.event("bots", row, detail={"text": "BOTS: 1 comments from vercel[bot]", "body": "A member of the Team first needs to authorize it."})
+        self.event("pre-existing-failures", row, detail={"text": "PRE-EXISTING FAILURES: osv-scan",
+                                                          "jobs": [{"name": "osv-scan", "failing_on_base": True, "head_sha": HEAD}]})
+        self.assertIsNone(self.wave())
+        triage, = self.actions("ci-triage")
+        self.assertIn("post no public status note", " ".join(triage["commands"]))
+        self.assertIn("Reply only when a person or bot raises a problem", followup_rule := nextaction.followup.NO_STATUS_REPLY)
+        self.assertIn(followup_rule, " ".join(triage["commands"]))
+
+    def test_legacy_bot_comment_with_a_code_finding_is_recovered_but_notices_are_not(self):
+        item = self.item("core", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat())
+        self.event("bots", row, key=row["url"] + "#bots#900", detail={"text": "BOTS: 1 comments from changeset-bot",
+                   "body": "### 🦋 Changeset detected\n\nLatest commit: abc"})
+        self.event("bots", row, key=row["url"] + "#bots#901", detail={"text": "BOTS: 1 comments from vercel",
+                   "body": "@factory-owner is attempting to deploy a commit. A member of the Team first needs to authorize it."})
+        self.assertIsNone(self.wave())
+        self.event("bots", row, key=row["url"] + "#bots#902", detail={"text": "BOTS: 1 comments from greptile-apps",
+                   "body": "`src/cache.ts:42` returns the stale entry after `clear()`."})
+        task, = self.wave()["tasks"]
+        self.assertEqual(task["role"], "follow")
+        self.assertIn(row["url"] + "#bot-comment#902", task["note"])
+        self.assertNotIn("#bots#900", task["note"])
+        self.assertEqual(nextaction.owed_feedback(read_json(self.ledger)[-1]), [row["url"] + "#bot-comment#902"])
+
+    def test_queue_survives_restart_and_settles_only_after_the_reply_or_thread_resolution(self):
+        item = self.item("core", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat(), bot_pending=[44])
+        finding = self.event("bot-finding", row, key=row["url"] + "#bot-finding#44", detail={"text": "BOT FINDING", "body": "Missing await"})
+        comment = self.event("bot-comment", row, key=row["url"] + "#bot-comment#45",
+                             detail={"text": "BOT COMMENT", "body": "`src/a.ts:3` drops the error"})
+        owed = sorted(nextaction.owed_feedback(read_json(self.ledger)[-1]))
+        self.assertEqual(owed, sorted([finding["key"], comment["key"]]))
+        # A restarted shift reads the same saved file; nothing was answered, so the same work is owed.
+        self.assertEqual(sorted(nextaction.owed_feedback(read_json(self.ledger)[-1])), owed)
+        self.assertEqual(self.wave()["tasks"][0]["role"], "follow")
+        later = (self.clock + dt.timedelta(minutes=1)).isoformat()
+        write_json(self.ledger, [{**row, "bot_pending": [], "last_check": later}])  # thread 44 resolved upstream
+        self.assertEqual(nextaction.owed_feedback(read_json(self.ledger)[-1]), [comment["key"]])
+        item.file("reply.md").write_text("Fixed in the latest commit.")
+        write_json(item.file("follow.json"), {"event_keys": [comment["key"]], "reply_file": "reply.md",
+                                              "requests": [{"request": "error", "disposition": "fixed", "evidence": "receipt"}]})
+        item.meta["replies"] = [{"file": "reply.md", "url": "", "at": later}]  # a failed post
+        item.save()
+        self.assertEqual(nextaction.owed_feedback(read_json(self.ledger)[-1]), [comment["key"]])
+        item.meta["replies"] = [{"file": "reply.md", "url": row["url"] + "#issuecomment-9", "at": later}]
+        item.save()
+        self.assertEqual(nextaction.owed_feedback(read_json(self.ledger)[-1]), [])
+        self.assertIsNone(self.wave())
+
+    def test_ci_failure_is_owed_until_triaged_and_a_conflict_settles_once_mergeable(self):
+        row = self.row(last_check=self.clock.isoformat(), checks={"failing": ["osv-scan"]}, mergeable="CONFLICTING")
+        self.event("ci-failing", row, key=row["url"] + "#ci-failing#1",
+                   detail={"text": "CI FAILING", "head_sha": HEAD, "jobs": [{"name": "osv-scan", "run_id": 1, "head_sha": HEAD}]})
+        conflict = self.event("conflict", row, key=row["url"] + "#conflict#" + HEAD)
+        owed, = nextaction.owed_ci(read_json(self.ledger)[-1])
+        triage, = self.actions("ci-triage")
+        self.assertEqual(owed, triage["id"])
+        nextaction.acknowledge(triage["id"], "osv-scan: external — lockfiles untouched by the PR; main's scan passes")
+        self.assertEqual(nextaction.owed_ci(read_json(self.ledger)[-1]), [])
+        self.assertEqual(nextaction.owed_feedback(read_json(self.ledger)[-1]), [conflict["key"]])
+        write_json(self.ledger, [{**row, "mergeable": "MERGEABLE", "last_check": (self.clock + dt.timedelta(minutes=1)).isoformat()}])
+        self.assertEqual(nextaction.owed_feedback(read_json(self.ledger)[-1]), [])
+
+    def test_bot_feedback_end_to_end_from_saved_events_to_a_posted_reply(self):
+        item = self.item("core", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat())
+        bodies = {"901": "`src/cache.ts` returns the stale entry after `clear()`; reset `size` too.",
+                  "902": "Could you add a regression test for an empty stop sequence?",
+                  "903": "Reviewed `src/cache.ts:42`. LGTM, no issues found.",
+                  "904": "<details><summary>Outside diff range comments (0)</summary>No issues found.</details>",
+                  "905": "Ran the docs build for this change: `docs/api.md` updated."}
+        for number, body in bodies.items():  # saved before bot-comment existed, as the live ledger holds them
+            self.event("bots", row, key=f"{row['url']}#bots#{number}", detail={"text": "BOTS", "body": body})
+        task, = self.wave()["tasks"]
+        self.assertEqual(task["role"], "follow")
+        for number in ("901", "902"):
+            self.assertIn(f"#bot-comment#{number}", task["note"])
+        for number in ("903", "904", "905"):
+            self.assertNotIn(f"#{number}\"", task["note"])
+        triage, = self.actions("bot-triage")
+        self.assertIn("Never post a status", " ".join(triage["commands"]))
+        current = read_json(self.ledger)[-1]
+        owed = sorted(nextaction.owed_feedback(current))
+        self.assertEqual(owed, [f"{row['url']}#bot-comment#901", f"{row['url']}#bot-comment#902"])
+        self.assertEqual(nextaction.owed_triage(current), [triage["id"]])
+        # Restart: the same saved file yields the same work.
+        self.assertEqual(sorted(nextaction.owed_feedback(current)), owed)
+        nextaction.acknowledge(triage["id"], "no finding — a docs build notice; nothing to answer")
+        self.assertEqual(nextaction.owed_triage(current), [])
+        item.file("reply.md").write_text("Fixed and covered by a regression test.")
+        write_json(item.file("follow.json"), {"event_keys": owed, "reply_file": "reply.md",
+                                              "requests": [{"request": "stale entry", "disposition": "fixed", "evidence": "receipt"}]})
+        later = (self.clock + dt.timedelta(minutes=1)).isoformat()
+        item.meta["replies"] = [{"file": "reply.md", "url": "", "at": later}]  # the post failed
+        item.save()
+        self.assertEqual(sorted(nextaction.owed_feedback(current)), owed)
+        item.meta["replies"] = [{"file": "reply.md", "url": row["url"] + "#issuecomment-1", "at": later}]
+        item.save()
+        self.assertEqual(nextaction.owed_feedback(current), [])
+        self.assertIsNone(self.wave())
+
+    def test_open_pr_feedback_is_dispatched_before_new_work(self):
+        self.item("needs-review", "stale_reviews", repo="o/other")
+        item = self.item("dp743", status="submitted", pr_url="https://github.com/o/r/pull/1")
+        row = self.row(item=str(item.dir.relative_to(self.root)), last_check=self.clock.isoformat(), inline_pending=[11])
+        self.inline(row, 11)
+        self.lanes = ["o/third"]
+        self.assertEqual([t["role"] for t in self.wave()["tasks"]][:2], ["follow", "review"])
 
     def test_recorded_follow_blocker_waits_without_repeating_or_stalling_other_work(self):
         item = self.item("blocked-follow", status="submitted", pr_url="https://github.com/o/r/pull/1")
@@ -1789,7 +1974,11 @@ class NextActions(unittest.TestCase):
             write_json(self.ledger, [{**row, "lesson": "L-present"}])
             self.assertEqual(self.actions()[0]["kind"], "ship")
         write_json(self.ledger, [{**row, "status": "community-review", "silent": self.clock.isoformat()}])
-        self.assertEqual(self.actions()[0]["kind"], "lesson")
+        kinds = [action["kind"] for action in self.actions()]
+        self.assertEqual(kinds[0], "ship", "a silent PR's missing lesson does not hold other new PRs")
+        silent, = [action for action in self.actions() if action["kind"] == "silence-lesson"]
+        self.assertIn("does not block other new PRs", silent["why"])
+        self.assertLess(kinds.index("ship"), kinds.index("silence-lesson"))
 
     def test_action_order(self):
         self.disk.free = 4 * 1024 ** 3
@@ -1894,7 +2083,7 @@ class NextActions(unittest.TestCase):
         self.read_mergers(RuntimeError("TLS timeout"))
         self.item("blocked", "ship_ready")
         self.item("other", "ship_ready", repo="o/other")
-        self.plan["repo_slots"] = [{"repo": repo, "free": 1, "merged": 1} for repo in ("o/r", "o/scout")]
+        self.plan["repo_slots"] = [{"repo": repo, "merged": 1} for repo in ("o/r", "o/scout")]
         self.lanes = ["o/r", "o/scout"]
         repair = self.actions()[0]
         self.assertTrue(repair["observation"])
@@ -2127,7 +2316,7 @@ class NextActions(unittest.TestCase):
         self.item("old", "stale_reviews", repo="OLD/Kit")
         self.item("current", "stale_reviews", repo="NEW/Kit")
         self.lanes = ["O/Scout"]
-        self.plan["repo_slots"] = [{"repo": "o/scout", "free": 1, "merged": 1}]
+        self.plan["repo_slots"] = [{"repo": "o/scout", "merged": 1}]
         with patch.dict(CONFIG, {"repo_renames": {"old/kit": "New/Kit"}}):
             self.assertEqual([t["lock_key"] for t in self.wave()["tasks"]], ["kit", "kit", "scout"])
 

@@ -66,6 +66,10 @@ class CommandError(RuntimeError):
     pass
 
 
+class RateLimited(CommandError):
+    """GitHub refused or paused reads for quota: a reason to wait for the reset, never a verdict on a repository."""
+
+
 def run(cmd, cwd=None, check=True, input=None, env=None, timeout=None):
     try:
         proc = subprocess.run(cmd, cwd=cwd, input=input, capture_output=True, text=True, env=env, timeout=timeout)
@@ -84,13 +88,70 @@ def git(repo, *args, check=True):
 GH_READ_TIMEOUT = 120
 
 
+# GitHub's own words for an exhausted primary quota or a secondary limit.
+RATE_LIMITED = re.compile(r"API rate limit exceeded|secondary rate limit|HTTP 429", re.I)
+GITHUB_QUOTAS = ("core", "graphql", "search", "code_search")
+
+
+def github_pause_path():
+    """One pause file per checkout, shared by every worker on the machine (owner, 2026-11-22: share the quota)."""
+    return pathlib.Path(os.environ.get("FACTORY_GH_PAUSE") or ROOT / "workspace" / "github-pause.json")
+
+
+def github_paused_until():
+    """When the shared pause ends, or None when GitHub reads may go ahead."""
+    try:
+        until = parse_iso((read_json(github_pause_path()) or {}).get("until"))
+    except (AttributeError, TypeError, ValueError, OSError):
+        return None
+    return until if until > now() else None
+
+
+def pause_github(reason):
+    """Record GitHub's reset time after a rate-limit refusal, so other workers wait instead of sending doomed requests.
+
+    The reset comes from GET /rate_limit, which does not count against the quota; a secondary limit without an
+    exhausted resource waits a minute, as GitHub asks."""
+    until = None
+    try:
+        resources = json.loads(run(["gh", "api", "rate_limit"], timeout=30).stdout)["resources"]
+        resets = [resources[name]["reset"] for name in GITHUB_QUOTAS
+                  if isinstance(resources.get(name), dict) and resources[name].get("remaining") == 0]
+        if resets:
+            until = dt.datetime.fromtimestamp(max(resets), dt.timezone.utc)
+    except (CommandError, KeyError, TypeError, ValueError, OSError, OverflowError):
+        pass
+    until = max(until or now(), now() + dt.timedelta(seconds=60))
+    path = github_pause_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(path, {"until": iso(until), "at": iso(), "reason": " ".join(reason.split())[:300]})
+    return until
+
+
+def gh_read(cmd, timeout=None):
+    """Run a gh read unless the shared pause is on; a rate-limit refusal starts the pause for every worker.
+    Only gh's own error output is classified, never the arguments. A pause paces the work: it is never a verdict on a
+    repository, so it raises RateLimited."""
+    until = github_paused_until()
+    note = "GitHub rate limit: reads pause until {} for every worker; this paces the work and says nothing about any repository"
+    if until:
+        raise RateLimited(note.format(iso(until)))
+    proc = run(cmd, timeout=timeout, check=False)
+    if proc.returncode == 0:
+        return proc
+    failure = f"{' '.join(cmd)} failed ({proc.returncode}): {proc.stderr.strip()[:2000]}"
+    if RATE_LIMITED.search(proc.stderr or ""):
+        raise RateLimited(f"{failure}; " + note.format(iso(pause_github(proc.stderr))))
+    raise CommandError(failure)
+
+
 def gh_json(*args, timeout=None):
-    out = run(["gh", *args], timeout=timeout).stdout
+    out = gh_read(["gh", *args], timeout=timeout).stdout
     return json.loads(out) if out.strip() else None
 
 
 def gh_paginate(endpoint, timeout=GH_READ_TIMEOUT):
-    out = run(["gh", "api", "--paginate", endpoint, "--jq", ".[]"], timeout=timeout).stdout
+    out = gh_read(["gh", "api", "--paginate", endpoint, "--jq", ".[]"], timeout=timeout).stdout
     return [json.loads(line) for line in out.splitlines() if line.strip()]
 
 

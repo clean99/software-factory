@@ -20,13 +20,17 @@ from factory.util import CONFIG, ROOT, CommandError, Item, iso, now, parse_iso, 
 ZONE = dt.timezone(dt.timedelta(hours=8))
 ACKS = ".shift-acks.json"
 GUARD = ".shift-next.lock"
-ACKABLE = {"disk", "ci-triage", "stale-head", "issue-taken", "issue-confirmed", "report"}
+ACKABLE = {"disk", "ci-triage", "bot-triage", "stale-head", "issue-taken", "issue-confirmed", "report"}
 DISK_FLOOR_GIB = 6
-FEEDBACK = {"changes-requested", "maintainer-review", "maintainer-comment", "bot-finding", "conflict"}
-ORDER = {kind: index for index, kind in enumerate(("push", "disk", "repair", "owner-action", "ci-triage", "stale-head", "issue-taken",
-          "issue-confirmed", "lesson", "coordinator-review", "ship", "propose", "stalled-item", "takeover", "held", "records", "wave", "route-lessons", "release", "commit", "measure", "report"))}
+# Human feedback events keep their first observation time; community reviewers' technical points are weighed like a
+# maintainer's (react-date-picker #743, 2026-11-24), and inline threads carry what an empty review summary does not.
+HUMAN = {f"{who}-{where}" for who in ("maintainer", "community") for where in ("comment", "review", "inline")}
+COMMUNITY = {"community-comment", "community-review", "community-inline"}
+FEEDBACK = {"changes-requested", "bot-finding", "bot-comment", "conflict"} | HUMAN
+FIRST_SEEN = HUMAN | {"bot-comment", "bot-unclassified"}
+ORDER = {kind: index for index, kind in enumerate(("push", "disk", "repair", "owner-action", "ci-triage", "bot-triage", "stale-head", "issue-taken",
+          "issue-confirmed", "lesson", "coordinator-review", "ship", "propose", "stalled-item", "takeover", "held", "records", "wave", "silence-lesson", "route-lessons", "release", "commit", "measure", "report"))}
 ITEM_ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError)
-SCOUT_COOLDOWN = dt.timedelta(days=3)
 ITEM_STALL = dt.timedelta(days=5)
 HISTORY_REFRESH = dt.timedelta(hours=12)
 # Printing a brief records a worker start, not completed work; exclude role-timeline.json.
@@ -151,8 +155,8 @@ def observations(observe):
                 saved.append(entry)
     live = followup.events() if observe and path.exists() else []
     by_key = {}
-    for entry in saved + live:
-        if entry["kind"] in {"maintainer-comment", "maintainer-review", "community-comment", "community-review"}:
+    for entry in map(legacy_bot_comment, saved + live):
+        if entry["kind"] in FIRST_SEEN:
             by_key.setdefault(entry["key"], entry)
         else:
             by_key[entry["key"]] = entry
@@ -160,6 +164,91 @@ def observations(observe):
               if not observe or not path.exists() or not live else "Using persisted observations from the last followup sweep.")
     ordered = sorted(by_key.values(), key=lambda e: (parse_iso(e["at"]), e["key"]))
     return recover_merger_feedback(ordered), source
+
+
+def legacy_bot_comment(entry):
+    """Bot conversation comments and review bodies observed before bot-comment existed were saved only in the BOTS line;
+    recover the ones that raise a concrete code problem under the key a new sweep would give them."""
+    prefix = f"{entry['url']}#bots#"
+    if entry["kind"] != "bots" or not entry["key"].startswith(prefix):
+        return entry
+    verdict = followup.bot_verdict(detail(entry).get("body"))
+    if verdict == "noise":
+        return entry
+    kind, label = ("bot-comment", "BOT COMMENT ") if verdict == "finding" else ("bot-unclassified", "BOT COMMENT TO CLASSIFY ")
+    source = entry["key"][len(prefix):]
+    text = label + entry["url"] + ": " + followup.pr_signals.finding_text(detail(entry).get("body") or "")[:160]
+    return {**entry, "key": f"{entry['url']}#{kind}#{source}", "kind": kind,
+            "detail": {**detail(entry), "text": text, "recovered_from": entry["key"]}}
+
+
+def ci_triage_action(url, head, failures, by_url, source=""):
+    jobs = {json.dumps(j, sort_keys=True): j for e in failures for j in detail(e).get("jobs", [])}
+    jobs = list(jobs.values()) or [{"name": n} for n in (by_url.get(url, {}).get("checks") or {}).get("failing", [])]
+    cmds = []
+    for job in jobs:
+        if job.get("run_id"):
+            cmds.append(command("gh", "--", "run", "view", job["run_id"], "-R", failures[0]["repo"], "--log-failed"))
+        else:
+            cmds.append(f"Read the failing job log for {job['name']} at {job.get('url') or url}")
+    cmds.append("Compare each job/version/error with base; docs/repairs.md#ci-triage lists leads, not exemptions. Fix ours on the same branch through the reviewed submit path.")
+    cmds.append("External or base failures: " + followup.NO_STATUS_REPLY + ".")
+    names = sorted({j["name"] for j in jobs})
+    return action("ci-triage", url, {"head": head or by_url.get(url, {}).get("head_sha"), "jobs": jobs, "events": sorted(e["key"] for e in failures)},
+                  "Triage failing CI", (source + " Jobs: " if source else "Jobs: ") + ", ".join(names), cmds,
+                  "Ack with one line per job: JOB: ours|external — concrete log/base evidence. Jobs: " + json.dumps(names))
+
+
+def owed_ci(row, events=None):
+    """IDs of ci-triage actions next would still show for this row: an acknowledged triage (JOB: external — evidence)
+    is settled, so a classified external failure is not counted as factory work."""
+    events = observations(False)[0] if events is None else events
+    by_url = {row["url"]: row}
+    ci = {}
+    for e in events:
+        if e["url"] == row["url"] and e["kind"] in {"ci-failing", "pre-existing-failures"} and current_event(e, by_url):
+            ci.setdefault(event_head(e), []).append(e)
+    acks = read_acks()
+    ids = [ci_triage_action(row["url"], head, failures, by_url)["id"] for head, failures in ci.items()]
+    return [i for i in ids if i not in acks]
+
+
+def bot_triage_action(event, source=""):
+    """An internal judgment on a bot comment the classifier could not settle: it is factory work until classified,
+    and it never becomes a reply by itself."""
+    data = detail(event)
+    number = event["key"].rsplit("#", 1)[-1]
+    where = f"{event['url']}#pullrequestreview-{number}" if data.get("state") else f"{event['url']}#issuecomment-{number}"
+    return action("bot-triage", event["url"], event["key"], "Classify a bot comment", (source + " " if source else "") + data.get("text", ""),
+                  [f"Read {where} in full.",
+                   "If it raises a problem, question or change request, handle it as follow-up feedback on the item "
+                   "(bin/factory brief follow --item <item>) and answer only through the reviewed reply path.",
+                   "Otherwise acknowledge with why nothing is owed. Never post a status or acknowledgement reply."],
+                  "Ack with one line: finding — <follow item or reply URL> | no finding — <why nothing is owed>.")
+
+
+def owed_triage(row, events=None):
+    """IDs of unacknowledged bot-triage actions for this row."""
+    events = observations(False)[0] if events is None else events
+    acks = read_acks()
+    ids = [bot_triage_action(e)["id"] for e in events
+           if e["url"] == row["url"] and e["kind"] == "bot-unclassified" and current_event(e, {row["url"]: row})]
+    return [i for i in ids if i not in acks]
+
+
+def owed_feedback(row):
+    """Keys of saved feedback on this PR row that next would still dispatch: current, a feedback kind, and not answered
+    by every reply its follow.json names. Followup records the result in waiting_on."""
+    events = [e for e in observations(False)[0]
+              if e["url"] == row["url"] and e["kind"] in FEEDBACK and current_event(e, {row["url"]: row})]
+    if not events:
+        return []
+    if row.get("item"):
+        item = local_item(row["item"])
+        with evidence_file(item.file("follow.json")):
+            if follow_replied(item, events):
+                return []
+    return [e["key"] for e in events]
 
 
 def merger_error(event):
@@ -178,7 +267,7 @@ def recover_merger_feedback(ordered):
             reads.setdefault(entry["url"], []).append(entry)
         elif entry["kind"] == "feedback-read":
             completed.setdefault(entry["url"], []).append(entry)
-        elif entry["kind"] in {"community-comment", "community-review"}:
+        elif entry["kind"] in COMMUNITY:
             match = re.fullmatch(r"(https://github.com/[^/]+/[^/]+)/pull/\d+", entry["url"])
             if match:
                 community.setdefault(match[1], []).append(entry)
@@ -257,6 +346,17 @@ def current_event(event, rows):
     newer_observation = bool(row and row.get("last_check") and parse_iso(row["last_check"]) >= parse_iso(event["at"]))
     if kind == "followup-error" and newer_observation and parse_iso(row["last_check"]) > parse_iso(event["at"]):
         return False
+    if kind.endswith("-review") and kind in HUMAN and not detail(event).get("body", "").strip() \
+            and detail(event).get("state") in {"COMMENTED", "APPROVED"}:
+        return False  # an empty summary has nothing to answer; its inline comments are their own events
+    if kind.endswith("-inline") and newer_observation and isinstance(row.get("inline_pending"), list) \
+            and detail(event).get("comment_id") not in row["inline_pending"]:
+        return False  # resolved, or answered by us last, at the latest complete thread read
+    if kind == "conflict" and newer_observation and row.get("mergeable") == "MERGEABLE":
+        return False  # a later sweep saw the PR mergeable again
+    if kind == "bot-finding" and newer_observation and isinstance(row.get("bot_pending"), list) \
+            and event["key"].rsplit("#", 1)[-1] not in {str(i) for i in row["bot_pending"]}:
+        return False
     if row and kind in {"ci-failing", "pre-existing-failures"} and newer_observation:
         jobs = detail(event).get("jobs", [])
         names = {j["name"] for j in jobs if not j.get("failing_on_base") and not j.get("failing_on_other_prs")}
@@ -282,6 +382,20 @@ def owner_count():
             if cells and re.fullmatch(r"\d{4}-\d{2}-\d{2}", cells[0]) and len(cells) > 1 and not cells[1].startswith("~~"):
                 count += 1
     return count
+
+
+def watched_since(start):
+    """Whether a real watch scan, the shortlist's delta scan for new and updated issues and PRs, ran since start and
+    read every repository it covered; a scan with a failed repository (a rate limit, say) is run again."""
+    for path in path_from_config("runs_dir").glob("*/watch/*.json"):
+        try:
+            data = read_json(path) or {}
+            if (not data.get("dry_run") and parse_iso(data["at"]) >= start and data["repos"]
+                    and all(row["status"] == "ok" for row in data["repos"])):
+                return True
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return False
 
 
 def report_line(rows=None, at=None):
@@ -320,6 +434,16 @@ def follow_blocker(item, events):
             "reopen_when": data.get("reopen_when") or "Record evidence resolving the blockers in follow.json and clear its blockers list."}
 
 
+def reply_files(data):
+    """One reply per destination: `replies` lists them when feedback spans several inline threads."""
+    listed = data.get("replies")
+    if listed is None:
+        return [data.get("reply_file") or ""]
+    if not isinstance(listed, list) or not listed or not all(isinstance(r, dict) and r.get("file") for r in listed):
+        raise ValueError("follow.json replies must be a non-empty list of objects with a file")
+    return [r["file"] for r in listed]
+
+
 def follow_prepared(item, events):
     data = object_data(item.file("follow.json"))
     keys = set(data.get("event_keys", []))
@@ -328,11 +452,11 @@ def follow_prepared(item, events):
         return False
     if not all(r.get("request") and r.get("disposition") and r.get("evidence") for r in requests):
         return False
-    reply = item.dir / (data.get("reply_file") or "")
-    if not reply.resolve().is_relative_to(item.dir) or not reply.is_file():
+    replies = [item.dir / name for name in reply_files(data)]
+    if not all(reply.resolve().is_relative_to(item.dir) and reply.is_file() for reply in replies):
         return False
     result = verdicts.read_review(item)
-    inputs_at = max(path.stat().st_mtime_ns for path in (item.file("follow.json"), reply, item.file("pr.md")) if path.is_file())
+    inputs_at = max(path.stat().st_mtime_ns for path in (item.file("follow.json"), *replies, item.file("pr.md")) if path.is_file())
     return bool(result and result["verdict"] in verdicts.VERDICTS
                 and verdicts.bound(item, item.head_sha(), result["head"])
                 and (item.schema < 2 or result.get("pr_sha256") == verdicts.pr_text_sha256(item))
@@ -344,8 +468,10 @@ def follow_replied(item, events):
     if not {e["key"] for e in events}.issubset(set(data.get("event_keys", []))):
         return False
     replies = item.meta.get("replies", []) + item.meta.get("thread_replies", [])
-    return any(r.get("file") == data.get("reply_file") and r.get("url") and r.get("at")
-               and all(parse_iso(r["at"]) >= parse_iso(e["at"]) for e in events) for r in replies)
+    # Every destination must be posted; a failed or missing post keeps the feedback owed.
+    return all(any(r.get("file") == name and r.get("url") and r.get("at")
+                   and all(parse_iso(r["at"]) >= parse_iso(e["at"]) for e in events) for r in replies)
+               for name in reply_files(data))
 
 
 def parking(item):
@@ -782,24 +908,6 @@ def scout_history(acks):
     return history
 
 
-def upstream_activity(rows, events):
-    """Use saved source-keyed feedback and outcome dates, not repeated poll timestamps."""
-    activity = {}
-    for entry in rows:
-        stamps = [entry[key] for key in ("merged_at", "closed_at") if entry.get(key)]
-        if entry.get("repo") and stamps:
-            repo = canonical(entry["repo"]).lower()
-            stamp = max(map(parse_iso, stamps))
-            activity[repo] = max(activity.get(repo, stamp), stamp)
-    for entry in events:
-        if entry["kind"] not in {"maintainer-comment", "maintainer-review", "community-comment", "community-review"}:
-            continue
-        if entry.get("repo"):
-            repo, stamp = canonical(entry["repo"]).lower(), parse_iso(entry["at"])
-            activity[repo] = max(activity.get(repo, stamp), stamp)
-    return activity
-
-
 def release_action(active):
     if not clean.checkouts():
         return None
@@ -838,7 +946,6 @@ def actions(observe=True, include_release=True):
     rows = ledger.load()
     by_url = {r["url"]: r for r in rows}
     events, source = observations(observe)
-    activity = upstream_activity(rows, events)
     events = [e for e in events if current_event(e, by_url)]
     unobserved_repos = {canonical(e["url"].removeprefix("https://github.com/")).lower()
                         for e in events if merger_error(e)}
@@ -877,9 +984,16 @@ def actions(observe=True, include_release=True):
             load_item(row["item"], row["url"])
     for row in ledger.missing_lessons(rows):
         url = row["url"]
-        result.append(action("lesson", url, [row.get("status"), row.get("silent"), row.get("lesson"), row.get("closed_at")],
-                             "Record the missing lesson", "New PRs are blocked until closed or silent PRs have valid lesson records. "
-                             "A lesson from before this PR closed does not cover its closing feedback.",
+        closed = row.get("status") == "closed"
+        # A closed PR's lesson gates new PRs; a silent PR's lesson is owed but blocks nothing (owner, 2026-11-22).
+        if closed:
+            why = ("New PRs are blocked until closed PRs have valid lesson records. A lesson from before this PR closed "
+                   "does not cover its closing feedback.")
+        else:
+            why = "This silent PR owes a lesson; its silence alone does not block other new PRs."
+        result.append(action("lesson" if closed else "silence-lesson", url,
+                             [row.get("status"), row.get("silent"), row.get("lesson"), row.get("closed_at")],
+                             "Record the missing lesson", why,
                              [command("gh", "--", "pr", "view", url, "--json", "state,comments,reviews"),
                               command("lesson", "add", "--pr", url, "--title", "<what was learned>", "--rule", "<evidence-backed rule>",
                                       "--scope", row["repo"], "--source", url)],
@@ -923,6 +1037,8 @@ def actions(observe=True, include_release=True):
                 done = review_done(item, review_done(item, done), "coordinator")
             result.append(action(name, url, [event["key"], data, by_url.get(url, {}).get("head_sha")], name.replace("-", " ").capitalize(),
                                  source + " " + data.get("text", ""), cmd, done))
+        elif kind == "bot-unclassified":
+            result.append(bot_triage_action(event, source))
         elif kind in FEEDBACK:
             target = event.get("item") or by_url.get(url, {}).get("item")
             if target:
@@ -939,19 +1055,7 @@ def actions(observe=True, include_release=True):
                 entry["done_when"] += " Deferral does not clear the warning or permit code work or scouting in this repository."
             result.append(entry)
     for (url, head), failures in sorted(ci.items(), key=lambda pair: str(pair[0])):
-        jobs = {json.dumps(j, sort_keys=True): j for e in failures for j in detail(e).get("jobs", [])}
-        jobs = list(jobs.values()) or [{"name": n} for n in (by_url.get(url, {}).get("checks") or {}).get("failing", [])]
-        cmds = []
-        for job in jobs:
-            if job.get("run_id"):
-                cmds.append(command("gh", "--", "run", "view", job["run_id"], "-R", failures[0]["repo"], "--log-failed"))
-            else:
-                cmds.append(f"Read the failing job log for {job['name']} at {job.get('url') or url}")
-        cmds.append("Compare each job/version/error with base; docs/repairs.md#ci-triage lists leads, not exemptions. Fix ours on the same branch through the reviewed submit path.")
-        names = sorted({j["name"] for j in jobs})
-        result.append(action("ci-triage", url, {"head": head or by_url.get(url, {}).get("head_sha"), "jobs": jobs, "events": sorted(e["key"] for e in failures)},
-                             "Triage failing CI", source + " Jobs: " + ", ".join(names), cmds,
-                             "Ack with one line per job: JOB: ours|external — concrete log/base evidence. Jobs: " + json.dumps(names)))
+        result.append(ci_triage_action(url, head, failures, by_url, source))
     entries, items = {}, {}
     for bucket in ("needs_coordinator_review", "ship_ready", "fix_round", "stale_reviews", "held", "unreviewed",
                    "needs_value_review", "needs_implementation", "proposal_ready"):
@@ -967,14 +1071,18 @@ def actions(observe=True, include_release=True):
             items[target] = item
     lock = shiftlock.live(shiftlock.load(ROOT / shiftlock.STATE), at)
     shift = lock.get("generation") if lock else at.astimezone(ZONE).date().isoformat()
-    start = parse_iso(lock["acquired_at"]) if lock else dt.datetime.combine(at.astimezone(ZONE).date(), dt.time(), ZONE)
+    start = shiftlock.window_start(at, ROOT / shiftlock.STATE)
     unfinished, hunted, stalled = set(unobserved_repos), set(), set()
     last_empty = scout_history(acks)
     last_scout = dict(last_empty)
     empty_this_shift = {repo for repo, stamp in last_empty.items() if stamp >= start}
-    productive = set()
+    # Repositories with unfinished work that is not merely waiting for a maintainer's answer
+    in_progress = set(unobserved_repos)
     hunted.update(empty_this_shift)
     missing_clones = {(ROOT / entry["item"]).resolve() for entry in state.get("missing_clone", [])}
+    # The per-shift number is a target, not a ceiling (owner, 2026-11-22): new work keeps moving after it is reached.
+    shift_target = CONFIG.get("limits", {}).get("new_prs_per_shift_target")
+    opened_in_shift = len(ledger.opened_since(start, rows))
     for path in sorted(path_from_config("runs_dir").rglob("item.json")):
         item = load_item(path.parent)
         if item is None:
@@ -983,6 +1091,8 @@ def actions(observe=True, include_release=True):
         unfinished_item = not item.meta.get("pr_url") and not inactive(item, by_url)
         if unfinished_item:
             unfinished.add(repo)
+            if not plan._proposal_posted(item):
+                in_progress.add(repo)
         try:
             with evidence_file(path):
                 created = item.meta.get("created_at")
@@ -990,11 +1100,8 @@ def actions(observe=True, include_release=True):
                     created = parse_iso(created)
                     if repo not in last_scout or created > last_scout[repo]:
                         last_scout[repo] = created
-                    if repo in last_empty and created >= last_empty[repo]:
-                        del last_empty[repo]
                     if created >= start:
                         hunted.add(repo)
-                        productive.add(repo)
             if unfinished_item and repo not in unobserved_repos:
                 triage = stalled_action(item, at)
                 if triage:
@@ -1025,15 +1132,10 @@ def actions(observe=True, include_release=True):
         result += pending
         if task:
             tasks.append(task)
+    # Answering open-PR feedback comes before new work in the same wave.
+    tasks.sort(key=lambda task: task["role"] != "follow")
     slots = {canonical(s["repo"]).lower(): s for s in state.get("repo_slots", [])}
-    limits = CONFIG.get("limits", {})
-    cutoff = at - dt.timedelta(days=limits.get("open_pr_window_days", 180))
-    grouped = plan.by_repo([row for row in rows if row.get("status") in ledger.DONE
-                            or not row.get("submitted_at") or parse_iso(row["submitted_at"]) >= cutoff])
-    proven = {repo for repo, group in grouped.items() if any(row.get("status") == "merged" for row in group)}
-    exploring = sum(row.get("status") not in ledger.DONE for repo, group in grouped.items()
-                    if repo not in proven and not repo.startswith(CONFIG["github_user"].lower() + "/") for row in group)
-    limit = limits.get("max_hunts_per_shift", 3)
+    grouped = plan.by_repo(rows)
     active = {lane: lanes.order(lane) for lane in ("depth", "explore")}
     candidates = {lane: [] for lane in active}
     depth_cleared = set()
@@ -1044,32 +1146,33 @@ def actions(observe=True, include_release=True):
             if task_id in acks:
                 hunted.add(key)
                 empty_this_shift.add(key)
-            slot = slots.get(key)
-            if slot is None:
-                slot = plan.slot(grouped[key]) if key in grouped else {"free": limits["max_open_prs_per_repo_before_first_merge"]}
-            free = slot.get("free", 0)
-            if key not in proven:
-                free = min(free, max(0, limits["max_open_prs_total"] - exploring))
-            no_slot = free <= 0 or slot.get("stopped")
-            empty_at = last_empty.get(key)
-            cooling = (empty_at and at < empty_at + SCOUT_COOLDOWN and activity.get(key, empty_at) <= empty_at)
-            if lane == "depth" and (no_slot or cooling or (key in empty_this_shift and key not in productive)):
+            # No open-PR cap (owner, 2026-11-22): a lane is closed only by the long-history unresponsive test.
+            slot = slots.get(key) or (plan.slot(grouped[key]) if key in grouped else {})
+            stopped = slot.get("stopped")
+            # A depth lane is cleared once it has nothing more to offer this shift: it is stopped, it was
+            # already scouted this shift (each lane is scouted once), or its only unfinished work waits
+            # on maintainers, such as a posted proposal.
+            if lane == "depth" and (stopped or key in hunted or (key in unfinished and key not in in_progress)):
                 depth_cleared.add(key)
-            if no_slot or cooling or key in unfinished or key in hunted:
+            if stopped or key in unfinished or key in hunted:
                 continue
             candidates[lane].append({"key": task_id, "role": "scout", "repo": canonical(repo), "lock_key": key.rsplit("/", 1)[-1]})
         # Stable sorting preserves lane order for ties, including repositories never scouted.
         candidates[lane].sort(key=lambda task: last_scout.get(task["repo"].lower(), dt.datetime.min.replace(tzinfo=dt.timezone.utc)))
     depth = {canonical(repo).lower() for repo in active["depth"]}
-    exploration = {canonical(repo).lower() for repo in active["explore"]}
-    scouts = candidates["depth"]
-    if depth <= depth_cleared and not (exploration & hunted):
-        scouts += candidates["explore"][:1]
-    tasks += scouts[:max(0, limit - len(hunted))]
+    # No cooldown and no count cap (owner, 2026-11-22): each active lane is scouted at most once per shift,
+    # depth lanes first, then every active exploration lane once each depth lane is cleared.
+    tasks += candidates["depth"]
+    if depth <= depth_cleared:
+        tasks += candidates["explore"]
     if tasks:
         args = {"factory": str(ROOT), "concurrency": CONFIG.get("limits", {}).get("concurrency", 3), "tasks": tasks}
         renew = command("lock", "renew", "--owner", lock["owner"] if lock else "<owner>", "--generation", lock["generation"] if lock else "<generation from shift start>", "--ttl-hours", 8)
-        cmds = [renew, f"Call Workflow with scriptPath {ROOT / 'schedule/oss-wave.js'} and the following args:", json.dumps(args, ensure_ascii=False)]
+        cmds = [renew]
+        if any(t["role"] == "scout" for t in tasks) and not watched_since(start):
+            # The opportunity layer (2026-11-22): one bounded delta scan of the shortlist per shift feeds the scouts.
+            cmds += [command("watch"), "Scouts start from their repository's candidates in the newest runs/<date>/watch/ report."]
+        cmds += [f"Call Workflow with scriptPath {ROOT / 'schedule/oss-wave.js'} and the following args:", json.dumps(args, ensure_ascii=False)]
         for target in sorted({t["item"] for t in tasks if t.get("item")}):
             cmds.append(command("provenance", "--item", target, "--transcripts", "<transcript dir>"))
         if any(t["role"] == "scout" for t in tasks):
@@ -1115,6 +1218,9 @@ def actions(observe=True, include_release=True):
                              "A retrospective page is dated within the last six days."))
     sentence = report_line(rows, at)
     why = "Ledger totals use UTC+8 calendar days; owner actions count only open entries."
+    if shift_target:
+        why += (f"\nThis shift has opened {opened_in_shift} new PRs toward its target of {shift_target}; the target is "
+                "not a ceiling, and a shortfall is reported with its count and reason.")
     blocked.sort(key=lambda entry: entry["item"])
     for entry in blocked:
         why += (f"\nNot re-dispatched: {entry['item']} — " + "; ".join(entry["blockers"])

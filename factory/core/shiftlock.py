@@ -2,12 +2,15 @@
 import contextlib
 import datetime as dt
 import fcntl
+import os
 import secrets
 
 from factory.util import ROOT, iso, now, parse_iso, read_json, write_json
 
 STATE = ".shift-lock.json"
 SIDECAR = ".shift-lock.lock"
+# Set by schedule/agent-shift.py for a contribution session: when its run began, so resumes keep one shift count.
+RUN_STARTED = "FACTORY_RUN_STARTED_AT"
 
 
 @contextlib.contextmanager
@@ -38,6 +41,37 @@ def describe(state, t):
 
 def live(state, t):
     return state if state and parse_iso(state["expires_at"]) > t else None
+
+
+def window_start(t, path=None):
+    """When the current contribution shift began, for counting its new PRs.
+
+    The scheduler's run start comes first: it holds across session resumes and a re-taken lease. Without it, the
+    live lease's acquisition time; outside any shift, the Asia/Singapore midnight before t, so ad hoc submits share
+    one count per day. A malformed or empty run start raises rather than widening the window."""
+    text = os.environ.get(RUN_STARTED)
+    if text is not None:
+        try:
+            started = parse_iso(text)
+        except ValueError:
+            started = None
+        if started is None or started.tzinfo is None:
+            raise ValueError(f"{RUN_STARTED} must be an ISO time with a zone offset, not {text!r}")
+        return started
+    held = live(load(path or ROOT / STATE), t)
+    if held and held.get("acquired_at"):
+        return parse_iso(held["acquired_at"])
+    return day_start(t)
+
+
+def day_start(t):
+    """The Asia/Singapore midnight that begins t's day, whatever the machine zone."""
+    from zoneinfo import ZoneInfo
+
+    from factory.core.metrics import ACTIVITY_ZONE
+
+    zone = ZoneInfo(ACTIVITY_ZONE)
+    return dt.datetime.combine(t.astimezone(zone).date(), dt.time(), zone)
 
 
 def acquire(owner, ttl_hours, commit_baseline=None):

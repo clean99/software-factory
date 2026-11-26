@@ -1,11 +1,11 @@
 """Open the PR. The only command in the factory that writes to someone else's repository.
 
-Refuses unless the gate passes with a human approval bound to the current HEAD, the flood
-limits leave room, every earlier closed PR has a lesson, and no PR exists for this branch yet
-(so a retry after a timeout never opens a duplicate).
+Refuses unless the gate passes with a human approval bound to the current HEAD, every earlier
+closed PR has a lesson, the repository's maintainers have not long left our work
+unanswered, and no PR exists for this branch yet (so a retry after a timeout never opens a
+duplicate). There is no count cap: the per-shift number is a target, not a ceiling.
 """
 import copy
-import datetime as dt
 import hashlib
 import pathlib
 import tempfile
@@ -14,78 +14,57 @@ import time
 from factory.core import clone_heal, gate, ledger, privacy_git, publication, published
 from factory.core.repos import canonical
 from factory.core.slop import parse_pr_md
-from factory.oss import disclosure, qualify
-from factory.util import CONFIG, CommandError, gh_json, git, iso, now, parse_iso, read_json, run as sh, write_json
+from factory.oss import disclosure, plan, qualify
+from factory.util import CONFIG, CommandError, gh_json, git, iso, parse_iso, read_json, run as sh, write_json
+
+CREATED_AT_READS = 3
 
 
-def open_prs(me):
-    """Our open PRs in other people's repos. PRs opened long before the factory are history, not a current spread."""
-    data = gh_json("search", "prs", "--author", me, "--state", "open", "--json", "repository,url,createdAt", "--limit", "100") or []
-    since = now() - dt.timedelta(days=CONFIG["limits"].get("open_pr_window_days", 180))
-    return [
-        p for p in data
-        if not p["repository"]["nameWithOwner"].lower().startswith(me.lower() + "/") and parse_iso(p["createdAt"]) >= since
-    ]
+def created_at(url):
+    """GitHub's creation time for a PR we just opened, or None when GitHub does not report it after a few reads."""
+    for attempt in range(CREATED_AT_READS):
+        if attempt:
+            time.sleep(2 * attempt)
+        try:
+            value = gh_json("pr", "view", url, "--json", "createdAt")["createdAt"]
+            parse_iso(value)
+            return value
+        except (AttributeError, CommandError, KeyError, TypeError, ValueError):
+            continue
+    return None
 
 
-def merged_repos(me):
-    """Repo -> when our latest PR there merged (None when GitHub gives no date)."""
-    data = gh_json("search", "prs", "--author", me, "--merged", "--json", "repository,closedAt", "--limit", "200") or []
-    last = {}
-    for p in data:
-        repo = canonical(p["repository"]["nameWithOwner"]).lower()
-        at = parse_iso(p["closedAt"]) if p.get("closedAt") else None
-        if repo not in last or (at and (last[repo] is None or at > last[repo])):
-            last[repo] = at
-    return last
+def branch_prs(repo, me, branch):
+    """PRs from this branch of our fork, newest first, read from the repository's pull request list.
+
+    GitHub's search index can lag a new PR by seconds, and gh pr list answers from it whenever --author is given.
+    The REST list filtered by head=<our login>:<branch> reads the repository's own records instead, and the head
+    filter keeps another author's branch of the same name out without a result limit pushing ours aside."""
+    data = gh_json("api", "-X", "GET", f"repos/{repo}/pulls", "-f", f"head={me}:{branch}", "-f", "state=all",
+                   "-f", "sort=created", "-f", "direction=desc", "-f", "per_page=100") or []
+    prs = []
+    for pr in data:
+        # The REST list says closed for merged PRs; keep gh's three states, which update_existing relies on.
+        state = "MERGED" if pr.get("merged_at") else pr["state"].upper()
+        prs.append({"url": pr["html_url"], "state": state, "createdAt": pr.get("created_at"), "mergedAt": pr.get("merged_at")})
+    return prs
 
 
-def flood_check(repo, me):
-    """Repos that merged our work are bounded by their own cap; the total cap bounds exploration elsewhere.
-    A repo that leaves our PRs unmerged for days gets no new ones until it merges again."""
-    limits = CONFIG["limits"]
-    problems = []
-    mine = open_prs(me)
-    proven = merged_repos(me)
+def unresponsive(repo):
+    """The long-history unresponsive test for this repository, read from the ledger without a GitHub read."""
     key = canonical(repo).lower()
-    in_repo = [p for p in mine if canonical(p["repository"]["nameWithOwner"]).lower() == key]
-    merged_here = key in proven
-    cap = limits["max_open_prs_per_repo"] if merged_here else limits["max_open_prs_per_repo_before_first_merge"]
-    if len(in_repo) >= cap:
-        problems.append(f"{len(in_repo)} open PRs in {repo} (cap {cap}{'' if merged_here else ' until the first merge'})")
-    stale_days = limits.get("stale_open_days", 3)
-    cutoff = now() - dt.timedelta(days=stale_days)
-    last_merge = proven.get(key)
-    stale = [
-        p for p in in_repo
-        if parse_iso(p["createdAt"]) <= cutoff and (last_merge is None or last_merge < parse_iso(p["createdAt"]))
-    ]
-    if stale:
-        problems.append(f"{len(stale)} open PRs in {repo} unmerged for {stale_days}+ days with no merge since (paused until one merges)")
-    exploring = [p for p in mine if canonical(p["repository"]["nameWithOwner"]).lower() not in proven]
-    if not merged_here and len(exploring) >= limits["max_open_prs_total"]:
-        problems.append(f"{len(exploring)} open PRs in repos without a merge yet (cap {limits['max_open_prs_total']})")
-    daily_cap = limits.get("max_new_prs_per_day")
-    if daily_cap is not None:
-        from zoneinfo import ZoneInfo
-        from factory.core.metrics import ACTIVITY_ZONE
-
-        zone = ZoneInfo(ACTIVITY_ZONE)
-        today = now().astimezone(zone).date()
-        sent_today = [r for r in ledger.load() if r.get("submitted_at") and parse_iso(r["submitted_at"]).astimezone(zone).date() == today]
-        if len(sent_today) >= daily_cap:
-            problems.append(f"{len(sent_today)} PRs opened today (cap {daily_cap})")
-    return problems
+    return plan.unresponsive([r for r in ledger.load() if (canonical(r.get("repo")) or "").lower() == key])
 
 
 def preconditions(item):
     """The read-only refusals that need neither the gate nor an issue number; the reason, or None when they pass."""
-    missing = ledger.missing_lessons()
+    # A silent PR still owes a lesson, but one PR's silence is no reason to stop other submissions (owner, 2026-11-22).
+    missing = [r for r in ledger.missing_lessons() if r["status"] == "closed"]
     if missing:
-        return "closed or silent PRs without a lesson: " + ", ".join(r["url"] for r in missing)
-    problems = flood_check(item.meta["repo"], CONFIG["github_user"])
-    if problems:
-        return "flood limits: " + "; ".join(problems)
+        return "closed PRs without a lesson: " + ", ".join(r["url"] for r in missing)
+    stopped = unresponsive(item.meta["repo"])
+    if stopped:
+        return "maintainers have not responded to our work here: " + "; ".join(stopped)
     stacked_on = item.meta.get("stacked_on")
     if stacked_on and stacked_on not in parse_pr_md(item.file("pr.md").read_text())[1]:
         return f"stacked item: pr.md must say what it builds on ({stacked_on} or its PR link)"
@@ -144,7 +123,13 @@ def push_privacy(item, args, public=()):
 
 
 def recover_existing(item, pr):
-    """Insert a missing PR row without overwriting follow-up or owner fields."""
+    """Insert a missing PR row without overwriting follow-up or owner fields.
+
+    The row carries GitHub's creation time only. Without it the row stays missing, and a later submit finds the PR in
+    the repository's PR list and records it once GitHub reports the time."""
+    created = pr.get("createdAt") or created_at(pr["url"])
+    if not created:
+        return
     with ledger.locked():
         rows = ledger.load()
         if ledger.find(rows, pr["url"]) is not None:
@@ -155,7 +140,7 @@ def recover_existing(item, pr):
             "url": pr["url"], "repo": meta["repo"], "number": int(pr["url"].rstrip("/").split("/")[-1]),
             "issue": meta.get("issue"), "branch": meta["branch"], "item": str(item.dir),
             "kind": meta.get("kind", "small"), "status": status,
-            "submitted_at": pr.get("createdAt") or meta.get("submitted_at") or iso(),
+            "submitted_at": created,
             "last_check": iso(), "lesson": None, "notes": meta.get("title", ""),
         }
         if pr.get("mergedAt"):
@@ -246,7 +231,8 @@ def run(item, dry_run=False, draft=False):
     me = CONFIG["github_user"]
     repo, branch = meta["repo"], meta["branch"]
 
-    existing = gh_json("pr", "list", "-R", repo, "--head", branch, "--author", me, "--state", "all", "--json", "url,state,createdAt,mergedAt", "--limit", "5") or []
+    # Read straight from the repository, not the search index, so a retry after a crash finds the PR it created.
+    existing = branch_prs(repo, me, branch)
     if existing:
         result = update_existing(item, existing[0], dry_run=dry_run)
         if dry_run:
@@ -335,7 +321,16 @@ def run(item, dry_run=False, draft=False):
         pathlib.Path(body_file).unlink(missing_ok=True)
 
     number = int(url.rstrip("/").split("/")[-1])
-    meta.update(pr_url=url, status="submitted", submitted_at=iso(), pushed_head=head)
+    # GitHub's creation time decides which shift the PR counts toward; the local time of the reply could fall after
+    # the shift's start for a PR created before it. Without GitHub's time, record nothing: the item is then left as a
+    # crash would leave it, and rerunning submit finds the PR through the repository's PR list and records it through
+    # the existing-PR path with GitHub's own creation time.
+    submitted_at = created_at(url)
+    if submitted_at is None:
+        return {"ok": False, "url": url, "created": True,
+                "reason": f"opened {url}, but GitHub did not report its creation time, so nothing was recorded; "
+                          f"rerun bin/factory submit {item.dir} to record it from GitHub"}
+    meta.update(pr_url=url, status="submitted", submitted_at=submitted_at, pushed_head=head)
     item.save()
     ledger.upsert({
         "url": url, "repo": repo, "number": number, "issue": meta.get("issue"), "branch": branch,

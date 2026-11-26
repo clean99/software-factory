@@ -14,7 +14,7 @@
     "daily": {
       "enabled": true,
       "zone": "Asia/Singapore",
-      "time": "21:43",
+      "times": ["05:43", "13:43", "21:43"],
       "main_model": "opus",
       "subagent_model": "sonnet",
       "minutes": 240,

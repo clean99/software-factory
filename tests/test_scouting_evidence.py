@@ -142,6 +142,21 @@ class QualificationEvidence(unittest.TestCase):
         result = self.check(timeline=[self.comment(quote)], linked=[None])
         self.assertEqual(result["verdict"], "ok", result)
 
+    def test_closed_outsider_attempts_warn_without_disqualifying_the_issue(self):
+        for authors in (("zoe",), ("zoe", "alex"), ("zoe", "alex", "zoe", "sam")):
+            with self.subTest(authors=authors):
+                timeline = [{"event": "cross-referenced", "source": {"issue": {
+                    "number": n, "state": "closed", "pull_request": {"merged_at": None},
+                    "user": {"login": author}, "author_association": "CONTRIBUTOR",
+                    "html_url": f"https://github.com/o/r/pull/{n}", "body": "Fixes #7"}}}
+                    for n, author in enumerate(authors, 8)]
+                result = self.check(timeline=timeline)
+                self.assertEqual(result["verdict"], "ok", result)
+                self.assertEqual(result["skip"], [])
+                self.assertEqual(result["warn"], [
+                    f"closed attempts by {', '.join(sorted(set(authors)))}: read why each was closed before starting, "
+                    "and drop the issue only on an actual reason (already fixed, duplicate, claimed, or the direction was rejected)"])
+
     def test_fix_evidence_supersedes_an_earlier_bare_link(self):
         issue = self.issue()
         issue["body"] = "Related PR: https://github.com/o/r/pull/8"

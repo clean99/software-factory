@@ -733,6 +733,21 @@ class ReviewProtocol(unittest.TestCase):
         self.invoke("takeover", "--item", str(self.root), "--head", HEAD)
         self.assertEqual(review.timeline.events(self.item)[-1]["decision"], "park")
 
+    def test_repair_takeover_of_an_archived_incomplete_review_asks_for_a_fresh_review(self):
+        self.review.update(verdict=None, complete=False)
+        self.save()
+        self.starts(600)
+        self.assertTrue(review.needs_takeover(self.item))
+        review.record_round(self.item)
+        self.assertTrue(review.needs_takeover(self.item))
+        self.write("takeover.json", {"decision": "repair", "reason": "Fix the probe fixture", "findings": [], "remaining": []})
+        self.invoke("takeover", "--item", str(self.root), "--head", HEAD)
+        self.assertFalse(review.needs_takeover(self.item))
+        # A fresh review that starts and is archived incomplete again needs another takeover.
+        review.timeline.mark(self.item, "review-started", head=HEAD,
+                             at=(dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=1)).isoformat())
+        self.assertTrue(review.needs_takeover(self.item))
+
     def test_only_an_on_time_current_review_ends_timeout(self):
         current = self.starts(8000)
         path = self.item.file("review.json")

@@ -17,11 +17,15 @@
     "disclosure_since": "2026-11-20"
   },
   "limits": {
-    "max_open_prs_total": 20,
-    "max_open_prs_per_repo": 3,
-    "max_open_prs_per_repo_before_first_merge": 1,
-    "max_new_prs_per_day": 1,
-    "stale_open_days": 3,
+    "new_prs_per_shift_target": 10,
+    "unresponsive_days": 30,
+    "unresponsive_min_prs": 3,
+    "responsiveness_record_days": 180,
+    "responsiveness_min_outside_prs": 10,
+    "responsiveness_min_outside_authors": 5,
+    "responsiveness_min_response_percent": 20,
+    "responsiveness_record_max_age_days": 30,
+    "policy_record_max_age_hours": 168,
     "qualify_max_age_hours": 12,
     "warn_diff_lines": 200,
     "max_diff_lines": 400,
@@ -30,8 +34,6 @@
     "max_soft_slop_hits": 3,
     "warn_test_lines": 1200,
     "silent_days": 7,
-    "open_pr_window_days": 180,
-    "max_hunts_per_shift": 3,
     "review_budget_minutes": 120
   }
 }
